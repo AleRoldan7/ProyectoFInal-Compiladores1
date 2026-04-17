@@ -1,0 +1,95 @@
+<div class="container-fluid ide">
+
+  <div class="row h-100">
+
+    <!-- SIDEBAR -->
+    <div class="col-3 sidebar">
+
+      <div class="acciones-globales">
+        <button class="btn btn-sm btn-success" (click)="crearCarpeta()">+ Carpeta</button>
+        <button class="btn btn-sm btn-primary" (click)="crearArchivo()">+ Archivo</button>
+      </div>
+
+      <ul class="tree">
+        <ng-container *ngFor="let nodo of arbol">
+          <ng-template 
+            [ngTemplateOutlet]="nodoTemplate"
+            [ngTemplateOutletContext]="{ nodo: nodo, lista: arbol }">
+          </ng-template>
+        </ng-container>
+      </ul>
+
+    </div>
+
+    <!-- EDITOR -->
+    <div class="col-9 editor">
+
+      <div class="topbar">
+        <span *ngIf="archivoActual">
+          {{ archivoActual.nombre }}
+        </span>
+
+        <button class="btn btn-success btn-sm" (click)="ejecutar()">
+          ▶ Ejecutar
+        </button>
+      </div>
+
+      <textarea
+        [(ngModel)]="contenido"
+        (input)="guardarContenido()"
+        class="form-control editor-textarea">
+      </textarea>
+
+    </div>
+
+  </div>
+
+</div>
+
+<!-- TEMPLATE RECURSIVO -->
+<ng-template #nodoTemplate let-nodo="nodo" let-lista="lista">
+
+  <li>
+
+    <div class="nodo">
+
+      <!-- CLICK SOLO PARA SELECCIONAR -->
+      <span 
+        (click)="seleccionar(nodo)"
+        [class.activo]="archivoActual === nodo">
+
+        {{ nodo.tipo === 'carpeta' ? '📁' : '📄' }} {{ nodo.nombre }}
+      </span>
+
+      <!-- BOTONES -->
+      <div class="acciones">
+
+        <button (click)="crearArchivo(nodo); $event.stopPropagation()">
+          📄+
+        </button>
+
+        <button (click)="crearCarpeta(nodo); $event.stopPropagation()">
+          📁+
+        </button>
+
+        <button (click)="eliminar(nodo, lista); $event.stopPropagation()">
+          ❌
+        </button>
+
+      </div>
+
+    </div>
+
+    <!-- HIJOS -->
+    <ul *ngIf="nodo.hijos?.length">
+      <ng-container *ngFor="let hijo of nodo.hijos">
+        <ng-template
+          [ngTemplateOutlet]="nodoTemplate"
+          [ngTemplateOutletContext]="{ nodo: hijo, lista: nodo.hijos }">
+        </ng-template>
+      </ng-container>
+    </ul>
+
+  </li>
+
+</ng-template>

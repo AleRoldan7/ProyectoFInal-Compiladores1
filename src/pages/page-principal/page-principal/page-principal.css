@@ -1,0 +1,100 @@
+.ide {
+  height: 100vh;
+}
+
+/* SIDEBAR */
+.sidebar {
+  background: #1e1e1e;
+  color: white;
+  padding: 10px;
+  overflow-y: auto;
+}
+
+.acciones-globales {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 10px;
+}
+
+/* ÁRBOL */
+.tree {
+  list-style: none;
+  padding-left: 10px;
+}
+
+.tree li {
+  margin: 5px 0;
+}
+
+.nodo {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  padding: 2px;
+}
+
+.nodo:hover {
+  background: #2a2d2e;
+}
+
+.acciones button {
+  margin-left: 5px;
+  background: transparent;
+  border: none;
+  color: #ccc;
+}
+
+.acciones button:hover {
+  color: white;
+}
+
+/* EDITOR */
+.editor {
+  background: #0d1117;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  color: white;
+}
+
+.editor-textarea {
+  flex: 1;
+  background: #0d1117;
+  color: #fff;
+  border: none;
+  resize: none;
+}
+
+.nodo {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.nodo span {
+  cursor: pointer;
+  flex: 1;
+  padding: 4px;
+  border-radius: 4px;
+}
+
+.nodo span:hover {
+  background: #2a2d3e;
+}
+
+.activo {
+  background: #007bff !important;
+  color: white;
+}
+
+.acciones button {
+  margin-left: 4px;
+  font-size: 10px;
+}

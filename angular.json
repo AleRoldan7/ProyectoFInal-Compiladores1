@@ -31,7 +31,11 @@
               "bootstrap-icons/font/bootstrap-icons.css"
             ],
             "scripts": [
-              "bootstrap/dist/js/bootstrap.bundle.js"
+              "bootstrap/dist/js/bootstrap.bundle.js",
+               "src/analisisis-jison/analizador-style.js",
+               "src/analisisis-jison/analizador-component.js",
+               "src/analisisis-jison/analizador-lenguaje-principal.js",
+               "src/analisisis-jison/analizador-dba.js"
             ]
           },
           "configurations": {
