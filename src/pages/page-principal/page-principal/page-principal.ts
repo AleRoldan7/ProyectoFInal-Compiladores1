@@ -10,6 +10,8 @@ import * as parserStyle from '../../../analisisis-jison/analizador-style.js';
 import * as parserComponent from '../../../analisisis-jison/analizador-component.js';
 import * as parserPrincipal from '../../../analisisis-jison/analizador-lenguaje-principal.js';
 import * as parserDBA from '../../../analisisis-jison/analizador-dba.js';
+import Swal from 'sweetalert2';
+import { RenderService } from '../../../service/render.service';
 
 
 @Component({
@@ -20,7 +22,7 @@ import * as parserDBA from '../../../analisisis-jison/analizador-dba.js';
 })
 export class PagePrincipal {
 
- arbol: NodoArchivo[] = [
+  arbol: NodoArchivo[] = [
     {
       nombre: 'src',
       tipo: 'carpeta',
@@ -38,6 +40,8 @@ export class PagePrincipal {
       ]
     }
   ];
+
+  constructor(private render: RenderService) { }
 
   archivoActual: NodoArchivo | null = null;
   contenido: string = '';
@@ -108,33 +112,74 @@ export class PagePrincipal {
 
   ejecutar() {
 
-    if (!this.archivoActual) {
-      alert("Selecciona un archivo");
-      return;
-    }
-
-    this.guardarContenido();
-
-    const parser = this.getParser(this.archivoActual.nombre);
-
-    if (!parser) {
-      alert("Tipo de archivo no soportado");
-      return;
-    }
-
     try {
 
-      const resultado = parser.parser.parse(this.contenido);
+      let astGlobal: any[] = [];
 
-      console.log("Análisis exitoso");
-      console.log(resultado);
+      const recorrer = (nodos: NodoArchivo[]) => {
 
-      alert("Análisis correcto");
+        for (let nodo of nodos) {
+
+          if (nodo.tipo === 'archivo') {
+
+            const parser = this.getParser(nodo.nombre);
+
+            if (parser && nodo.contenido) {
+
+              const ast = parser.parser.parse(nodo.contenido);
+
+              astGlobal.push(ast);
+            }
+
+          } else if (nodo.hijos) {
+            recorrer(nodo.hijos);
+          }
+        }
+      };
+
+      recorrer(this.arbol);
+
+      // 🔥 renderizar TODO
+      const html = this.render.render(astGlobal);
+
+      console.log(html);
+
+      const ventana = window.open();
+      ventana?.document.write(`
+      <html>
+        <body>
+          ${html}
+        </body>
+      </html>
+    `);
 
     } catch (error: any) {
 
-      console.error("Error:", error.message);
-      alert("Error: " + error.message);
+      console.error(error);
+
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: error.message
+      });
     }
+  }
+
+  obtenerTodosLosArchivos(nodos: NodoArchivo[]): NodoArchivo[] {
+
+    let archivos: NodoArchivo[] = [];
+
+    for (const nodo of nodos) {
+
+      if (nodo.tipo === 'archivo') {
+        archivos.push(nodo);
+      }
+
+      if (nodo.tipo === 'carpeta' && nodo.hijos) {
+        archivos = archivos.concat(this.obtenerTodosLosArchivos(nodo.hijos));
+      }
+    }
+
+    return archivos;
   }
 }
