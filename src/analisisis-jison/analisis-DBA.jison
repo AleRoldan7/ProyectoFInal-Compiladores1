@@ -23,7 +23,7 @@
 [a-zA-Z][a-zA-Z0-9_]*  return 'IDENTIFICADOR';
 
 <<EOF>>     return 'EOF';
-.   { yy.manejador.errorLexico(yytext, yylloc.first_line, yylloc.first_column+1); }
+. { yy.manejador.errorLexico(yytext, yylloc.first_line, yylloc.first_column+1); }
 
 /lex
 
@@ -35,8 +35,8 @@ inicio
     ;
 
 lista_sentencias
-    : lista_sentencias sentencia    { $$ = $1; $$.push($2); }
-    | sentencia                     { $$ = [$1]; }
+    : lista_sentencias sentencia  { $$ = $1; $$.push($2); }
+    | sentencia                   { $$ = [$1]; }
     ;
 
 sentencia
@@ -47,30 +47,34 @@ sentencia
     | eliminar
     ;
 
-/* TABLE */
 crear_tabla
     : TABLE IDENTIFICADOR COLUMNS lista_columnas PUNTO_COMA
         { $$ = { tipo:'create', tabla:$2, columnas:$4 }; }
     ;
 
 lista_columnas
-    : lista_columnas COMA columna_def   { $$ = $1; $$.push($3); }
-    | columna_def                       { $$ = [$1]; }
+    : lista_columnas COMA columna_def  { $$ = $1; $$.push($3); }
+    | columna_def                      { $$ = [$1]; }
     ;
 
 columna_def
-    : IDENTIFICADOR IGUAL IDENTIFICADOR
+    : IDENTIFICADOR IGUAL tipo_columna
         { $$ = { nombre:$1, tipo:$3 }; }
     ;
 
-/* tabla.columna; */
+/* AHORA ACEPTA TODOS LOS TIPOS */
+tipo_columna
+    : IDENTIFICADOR  { $$ = $1; }
+    ;
+
 seleccionar
     : IDENTIFICADOR PUNTO IDENTIFICADOR PUNTO_COMA
         { $$ = { tipo:'select', tabla:$1, columna:$3 }; }
     ;
 
+/* INSERTAR — ahora con PUNTO_COMA al final */
 insertar
-    : IDENTIFICADOR CORCH_A lista_asignaciones_db CORCH_C
+    : IDENTIFICADOR CORCH_A lista_asignaciones_db CORCH_C PUNTO_COMA
         { $$ = { tipo:'insert', tabla:$1, valores:$3 }; }
     ;
 
@@ -79,7 +83,6 @@ actualizar
         { $$ = { tipo:'update', tabla:$1, valores:$3, id:$6 }; }
     ;
 
-/* tabla DELETE id; */
 eliminar
     : IDENTIFICADOR DELETE valor_id PUNTO_COMA
         { $$ = { tipo:'delete', tabla:$1, id:$3 }; }
@@ -91,12 +94,13 @@ lista_asignaciones_db
     ;
 
 asignacion_db
-    : IDENTIFICADOR IGUAL STRING_LIT    { $$ = { col:$1, val:$3 }; }
-    | IDENTIFICADOR IGUAL DECIMAL       { $$ = { col:$1, val:parseFloat($3) }; }
-    | IDENTIFICADOR IGUAL ENTERO        { $$ = { col:$1, val:parseInt($3) }; }
+    : IDENTIFICADOR IGUAL STRING_LIT  { $$ = { col:$1, val:$3.replace(/"/g,'') }; }
+    | IDENTIFICADOR IGUAL DECIMAL     { $$ = { col:$1, val:parseFloat($3) }; }
+    | IDENTIFICADOR IGUAL ENTERO      { $$ = { col:$1, val:parseInt($3) }; }
+    | IDENTIFICADOR IGUAL IDENTIFICADOR { $$ = { col:$1, val:$3 }; }
     ;
 
 valor_id
-    : ENTERO        { $$ = parseInt($1); }
-    | DECIMAL       { $$ = parseFloat($1); }
+    : ENTERO    { $$ = parseInt($1); }
+    | DECIMAL   { $$ = parseFloat($1); }
     ;

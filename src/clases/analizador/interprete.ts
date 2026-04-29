@@ -1,5 +1,5 @@
 import { TraductorHTML } from "./traductor";
-
+/*
 export class Interprte {
 
     private traductor = new TraductorHTML();
@@ -7,14 +7,12 @@ export class Interprte {
 
     ejecutar(ast: any): string {
 
-        // guardar componentes
         ast.declaraciones.forEach((dec: any) => {
             if (dec.tipo === 'funcion') {
                 this.componentes[dec.nombre] = dec;
             }
         });
 
-        // ejecutar main
         return this.ejecutarMain(ast.main);
     }
 
@@ -40,8 +38,8 @@ export class Interprte {
                 return this.ejecutarComponente(nodo.nombre);
 
             case 'while':
-                // simulación básica (solo 1 iteración)
-                return this.traductor.renderWhile(
+
+            return this.traductor.renderWhile(
                     this.recorrer(nodo.cuerpo)
                 );
 
@@ -80,3 +78,4 @@ export class Interprte {
         return this.traductor.renderComponente(nombre, contenido);
     }
 }
+    */

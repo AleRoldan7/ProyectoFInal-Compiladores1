@@ -32,11 +32,10 @@
 "IMG"           return 'IMG';
 "T"             return 'TEXTO';
 
-/* CLAVES INPUT*/
+/* CLAVES INPUT */
 "id"            return 'KW_ID';
 "label"         return 'KW_LABEL';
 "value"         return 'KW_VALUE';
-"function"      return 'KW_FUNCTION';
 
 /* BOOLEANOS */
 "true"          return 'BOOL_TRUE';
@@ -47,11 +46,6 @@
 "!="            return 'NEQ';
 ">="            return 'GTE';
 "<="            return 'LTE';
-">"             return 'GT';
-"<"             return 'LT';
-"&&"            return 'AND';
-"||"            return 'OR';
-"!"             return 'NOT';
 
 /* OPERADORES ARITMETICOS */
 "+"             return 'MAS';
@@ -60,7 +54,7 @@
 "/"             return 'DIV';
 "%"             return 'MOD';
 
-/* DELIMITADORES TABLA */
+/* DELIMITADORES TABLA - DEBEN IR ANTES que los simples */
 "[["            return 'TABLA_A';
 "]]"            return 'TABLA_C';
 
@@ -71,7 +65,8 @@
 "}"             return 'LLAVE_C';
 "("             return 'PAREN_A';
 ")"             return 'PAREN_C';
-"<"             return 'ANGLE_A';  
+/* ANGULARES — tokens propios, separados de GT/LT */
+"<"             return 'ANGLE_A';
 ">"             return 'ANGLE_C';
 ","             return 'COMA';
 ";"             return 'PUNTO_COMA';
@@ -87,9 +82,7 @@
 [0-9]+                              return 'ENTERO';
 "$"[a-zA-Z][a-zA-Z0-9_]*           return 'VAR';
 "@"[a-zA-Z][a-zA-Z0-9_]*           return 'INPUT_REF';
-[a-zA-Z][a-zA-Z0-9_]*              return 'IDENTIFICADOR';
-
-"@"             return 'ARROBA';
+[a-zA-Z][a-zA-Z0-9_\-]*            return 'IDENTIFICADOR';
 
 <<EOF>>     return 'EOF';
 .   { yy.manejador.errorLexico(yytext, yylloc.first_line, yylloc.first_column+1); }
@@ -100,10 +93,11 @@
 %left AND
 %right NOT
 %left EQ NEQ
-%left GT GTE LT LTE
+%left GTE LTE
 %left MAS MENOS
 %left MULT DIV MOD
 %right UMENOS
+
 
 %start inicio
 %%
@@ -120,9 +114,9 @@ lista_componentes
 /* COMPONENTE */
 componente
     : IDENTIFICADOR PAREN_A lista_params PAREN_C LLAVE_A lista_elementos LLAVE_C
-        { $$ = { nombre:$1, params:$3, elementos:$6 }; }
+        { $$ = { tipo:'componente', nombre:$1, params:$3, elementos:$6 }; }
     | IDENTIFICADOR PAREN_A PAREN_C LLAVE_A lista_elementos LLAVE_C
-        { $$ = { nombre:$1, params:[], elementos:$5 }; }
+        { $$ = { tipo:'componente', nombre:$1, params:[], elementos:$5 }; }
     ;
 
 lista_params
@@ -132,7 +126,7 @@ lista_params
 
 param
     : tipo IDENTIFICADOR        { $$ = { tipo:$1, nombre:$2 }; }
-    | tipo VAR                  { $$ = { tipo:$1, nombre:$2 }; }
+    | tipo VAR                  { $$ = { tipo:$1, nombre:$2.substring(1) }; }
     ;
 
 tipo
@@ -184,7 +178,7 @@ lista_filas
     ;
 
 fila
-    : TABLA_A lista_celdas TABLA_C  { $$ = $2; }
+    : TABLA_A lista_celdas TABLA_C  { $$ = { celdas: $2 }; }
     ;
 
 lista_celdas
@@ -193,7 +187,7 @@ lista_celdas
     ;
 
 celda
-    : TABLA_A lista_elementos TABLA_C   { $$ = $2; }
+    : TABLA_A lista_elementos TABLA_C   { $$ = { contenido: $2 }; }
     ;
 
 /* TEXTO */
@@ -219,18 +213,22 @@ lista_urls
 
 url_val
     : STRING_LIT    { $$ = $1; }
-    | VAR           { $$ = $1; }
-    | VAR SECC_A expresion SECC_C  { $$ = { array:$1, indice:$3 }; }
+    | VAR           { $$ = { tipo:'var', nombre:$1 }; }
+    | VAR SECC_A expresion SECC_C  { $$ = { tipo:'array_acc', nombre:$1, indice:$3 }; }
     ;
 
 /* FORMULARIO */
 formulario
-    : FORM lista_estilos_ang LLAVE_A lista_inputs bloque_submit LLAVE_C
-        { $$ = { tipo:'form', estilos:$2, inputs:$4, submit:$5 }; }
+    : FORM lista_estilos_ang LLAVE_A lista_inputs LLAVE_C SUBMIT lista_estilos_ang LLAVE_A props_submit LLAVE_C
+        { $$ = { tipo:'form', estilos:$2, inputs:$4, submit:{ estilos:$7, props:$9 } }; }
+    | FORM lista_estilos_ang LLAVE_A lista_inputs LLAVE_C SUBMIT LLAVE_A props_submit LLAVE_C
+        { $$ = { tipo:'form', estilos:$2, inputs:$4, submit:{ estilos:[], props:$8 } }; }
     | FORM lista_estilos_ang LLAVE_A lista_inputs LLAVE_C
         { $$ = { tipo:'form', estilos:$2, inputs:$4, submit:null }; }
-    | FORM LLAVE_A lista_inputs bloque_submit LLAVE_C
-        { $$ = { tipo:'form', estilos:[], inputs:$3, submit:$4 }; }
+    | FORM LLAVE_A lista_inputs LLAVE_C SUBMIT lista_estilos_ang LLAVE_A props_submit LLAVE_C
+        { $$ = { tipo:'form', estilos:[], inputs:$3, submit:{ estilos:$6, props:$8 } }; }
+    | FORM LLAVE_A lista_inputs LLAVE_C SUBMIT LLAVE_A props_submit LLAVE_C
+        { $$ = { tipo:'form', estilos:[], inputs:$3, submit:{ estilos:[], props:$7 } }; }
     | FORM LLAVE_A lista_inputs LLAVE_C
         { $$ = { tipo:'form', estilos:[], inputs:$3, submit:null }; }
     ;
@@ -240,19 +238,32 @@ lista_inputs
     | /* vacío */                   { $$ = []; }
     ;
 
+/* INPUT acepta tanto { como ( para mayor compatibilidad */
 input_elemento
-    : INPUT_TEXT lista_estilos_ang PAREN_A propiedades_input PAREN_C
-        { $$ = { tipo:'input_text', estilos:$2, props:$4 }; }
+    : INPUT_TEXT lista_estilos_ang LLAVE_A propiedades_input LLAVE_C
+        { $$ = { tipo:'input_text', estilos:$2, props:Object.fromEntries($4.map(p=>[p.clave,p.valor])) }; }
+    | INPUT_NUMBER lista_estilos_ang LLAVE_A propiedades_input LLAVE_C
+        { $$ = { tipo:'input_number', estilos:$2, props:Object.fromEntries($4.map(p=>[p.clave,p.valor])) }; }
+    | INPUT_BOOL lista_estilos_ang LLAVE_A propiedades_input LLAVE_C
+        { $$ = { tipo:'input_bool', estilos:$2, props:Object.fromEntries($4.map(p=>[p.clave,p.valor])) }; }
+    | INPUT_TEXT lista_estilos_ang PAREN_A propiedades_input PAREN_C
+        { $$ = { tipo:'input_text', estilos:$2, props:Object.fromEntries($4.map(p=>[p.clave,p.valor])) }; }
     | INPUT_NUMBER lista_estilos_ang PAREN_A propiedades_input PAREN_C
-        { $$ = { tipo:'input_number', estilos:$2, props:$4 }; }
+        { $$ = { tipo:'input_number', estilos:$2, props:Object.fromEntries($4.map(p=>[p.clave,p.valor])) }; }
     | INPUT_BOOL lista_estilos_ang PAREN_A propiedades_input PAREN_C
-        { $$ = { tipo:'input_bool', estilos:$2, props:$4 }; }
+        { $$ = { tipo:'input_bool', estilos:$2, props:Object.fromEntries($4.map(p=>[p.clave,p.valor])) }; }
+    | INPUT_TEXT LLAVE_A propiedades_input LLAVE_C
+        { $$ = { tipo:'input_text', estilos:[], props:Object.fromEntries($3.map(p=>[p.clave,p.valor])) }; }
+    | INPUT_NUMBER LLAVE_A propiedades_input LLAVE_C
+        { $$ = { tipo:'input_number', estilos:[], props:Object.fromEntries($3.map(p=>[p.clave,p.valor])) }; }
+    | INPUT_BOOL LLAVE_A propiedades_input LLAVE_C
+        { $$ = { tipo:'input_bool', estilos:[], props:Object.fromEntries($3.map(p=>[p.clave,p.valor])) }; }
     | INPUT_TEXT PAREN_A propiedades_input PAREN_C
-        { $$ = { tipo:'input_text', estilos:[], props:$3 }; }
+        { $$ = { tipo:'input_text', estilos:[], props:Object.fromEntries($3.map(p=>[p.clave,p.valor])) }; }
     | INPUT_NUMBER PAREN_A propiedades_input PAREN_C
-        { $$ = { tipo:'input_number', estilos:[], props:$3 }; }
+        { $$ = { tipo:'input_number', estilos:[], props:Object.fromEntries($3.map(p=>[p.clave,p.valor])) }; }
     | INPUT_BOOL PAREN_A propiedades_input PAREN_C
-        { $$ = { tipo:'input_bool', estilos:[], props:$3 }; }
+        { $$ = { tipo:'input_bool', estilos:[], props:Object.fromEntries($3.map(p=>[p.clave,p.valor])) }; }
     ;
 
 propiedades_input
@@ -261,16 +272,16 @@ propiedades_input
     ;
 
 prop_input
-    : KW_ID DOS_PUNTOS STRING_LIT COMA      { $$ = { clave:'id', valor:$3 }; }
-    | KW_LABEL DOS_PUNTOS STRING_LIT COMA   { $$ = { clave:'label', valor:$3 }; }
+    : KW_ID DOS_PUNTOS STRING_LIT COMA      { $$ = { clave:'id', valor:$3.replace(/"/g,'') }; }
+    | KW_LABEL DOS_PUNTOS STRING_LIT COMA   { $$ = { clave:'label', valor:$3.replace(/"/g,'') }; }
     | KW_VALUE DOS_PUNTOS valor_input COMA  { $$ = { clave:'value', valor:$3 }; }
-    | KW_ID DOS_PUNTOS STRING_LIT           { $$ = { clave:'id', valor:$3 }; }
-    | KW_LABEL DOS_PUNTOS STRING_LIT        { $$ = { clave:'label', valor:$3 }; }
+    | KW_ID DOS_PUNTOS STRING_LIT           { $$ = { clave:'id', valor:$3.replace(/"/g,'') }; }
+    | KW_LABEL DOS_PUNTOS STRING_LIT        { $$ = { clave:'label', valor:$3.replace(/"/g,'') }; }
     | KW_VALUE DOS_PUNTOS valor_input       { $$ = { clave:'value', valor:$3 }; }
     ;
 
 valor_input
-    : STRING_LIT    { $$ = $1; }
+    : STRING_LIT    { $$ = $1.replace(/"/g,''); }
     | VAR           { $$ = $1; }
     | BOOL_TRUE     { $$ = true; }
     | BOOL_FALSE    { $$ = false; }
@@ -278,21 +289,18 @@ valor_input
     | DECIMAL       { $$ = parseFloat($1); }
     ;
 
-bloque_submit
-    : LLAVE_C SUBMIT lista_estilos_ang LLAVE_A props_submit
-        { $$ = { estilos:$3, props:$5 }; }
-    | LLAVE_C SUBMIT LLAVE_A props_submit
-        { $$ = { estilos:[], props:$4 }; }
-    ;
-
 props_submit
-    : KW_LABEL DOS_PUNTOS STRING_LIT T_FUNCTION DOS_PUNTOS llamada_funcion
-        { $$ = { label:$3, funcion:$6 }; }
+    : KW_LABEL DOS_PUNTOS STRING_LIT
+        { $$ = { label:$3.replace(/"/g,''), funcion:null }; }
+    | KW_LABEL DOS_PUNTOS STRING_LIT T_FUNCTION DOS_PUNTOS llamada_funcion
+        { $$ = { label:$3.replace(/"/g,''), funcion:$6 }; }
     ;
 
 llamada_funcion
     : VAR PAREN_A lista_args_submit PAREN_C
         { $$ = { nombre:$1, args:$3 }; }
+    | VAR PAREN_A PAREN_C
+        { $$ = { nombre:$1, args:[] }; }
     ;
 
 lista_args_submit
@@ -306,7 +314,6 @@ arg_submit
     ;
 
 /* CICLOS Y CONDICIONALES */
-
 ciclo_for_each
     : FOR_EACH PAREN_A VAR DOS_PUNTOS VAR PAREN_C LLAVE_A lista_elementos LLAVE_C
         { $$ = { tipo:'for_each', item:$3, array:$5, cuerpo:$8, vacio:null }; }
@@ -324,18 +331,47 @@ ciclo_for_comp
     ;
 
 condicional_if
+    : if_simple
+    | if_completo
+    ;
+
+/* IF SIN ELSE */
+if_simple
+    : IF PAREN_A condicion PAREN_C LLAVE_A lista_elementos LLAVE_C
+        {
+          $$ = {
+            tipo:'if',
+            condicion:$3,
+            entonces:$6,
+            sino_si:[],
+            sino:null
+          };
+        }
+    ;
+
+/* IF CON ELSE / ELSE IF */
+if_completo
     : IF PAREN_A condicion PAREN_C LLAVE_A lista_elementos LLAVE_C lista_else
-        { $$ = { tipo:'if', cond:$3, then:$6, ramas:$8 }; }
+        {
+          $$ = {
+            tipo:'if',
+            condicion:$3,
+            entonces:$6,
+            sino_si:$8.filter(r => r.tipo === 'else_if'),
+            sino:($8.find(r => r.tipo === 'else') || {}).cuerpo || null
+          };
+        }
     ;
 
 lista_else
     : lista_else rama_else  { $$ = $1; $$.push($2); }
-    | /* vacío */           { $$ = []; }
+    | rama_else             { $$ = [$1]; }
     ;
 
 rama_else
-    : ELSE PAREN_A condicion PAREN_C LLAVE_A lista_elementos LLAVE_C
-        { $$ = { tipo:'else_if', cond:$3, cuerpo:$6 }; }
+    : ELSE IF PAREN_A condicion PAREN_C LLAVE_A lista_elementos LLAVE_C
+        { $$ = { tipo:'else_if', condicion:$4, cuerpo:$7 }; }
+
     | ELSE LLAVE_A lista_elementos LLAVE_C
         { $$ = { tipo:'else', cuerpo:$3 }; }
     ;
@@ -346,20 +382,20 @@ switch_comp
     ;
 
 lista_casos
-    : lista_casos caso  { $$ = $1; $$.push($2); }
-    | caso              { $$ = [$1]; }
+    : lista_casos COMA caso  { $$ = $1; $$.push($3); }
+    | caso                   { $$ = [$1]; }
     ;
 
 caso
-    : CASE STRING_LIT LLAVE_A lista_elementos LLAVE_C COMA
-        { $$ = { valor:$2, cuerpo:$4 }; }
+    : CASE STRING_LIT LLAVE_A lista_elementos LLAVE_C
+        { $$ = { valor:$2.replace(/"/g,''), cuerpo:$4 }; }
     | DEFAULT LLAVE_A lista_elementos LLAVE_C
         { $$ = { valor:'default', cuerpo:$3 }; }
     ;
 
-/* ESTILOS─ */
+/* ESTILOS — usa ANGLE_A y ANGLE_C, no GT/LT */
 lista_estilos_ang
-    : LT lista_ids GT   { $$ = $2; }
+    : ANGLE_A lista_ids ANGLE_C   { $$ = $2; }
     ;
 
 lista_ids
@@ -369,11 +405,11 @@ lista_ids
 
 /* EXPRESIONES */
 condicion
-    : expresion EQ  expresion   { $$ = { op:'==', izq:$1, der:$3 }; }
+    : expresion ANGLE_A expresion { $$ = { op: '<', izq:$1, der:$3 }; }
+    | expresion ANGLE_C expresion { $$ = { op: '>', izq:$1, der:$3 }; }
+    | expresion EQ  expresion   { $$ = { op:'==', izq:$1, der:$3 }; }
     | expresion NEQ expresion   { $$ = { op:'!=', izq:$1, der:$3 }; }
-    | expresion GT  expresion   { $$ = { op:'>',  izq:$1, der:$3 }; }
     | expresion GTE expresion   { $$ = { op:'>=', izq:$1, der:$3 }; }
-    | expresion LT  expresion   { $$ = { op:'<',  izq:$1, der:$3 }; }
     | expresion LTE expresion   { $$ = { op:'<=', izq:$1, der:$3 }; }
     | condicion AND condicion   { $$ = { op:'&&', izq:$1, der:$3 }; }
     | condicion OR  condicion   { $$ = { op:'||', izq:$1, der:$3 }; }
@@ -391,10 +427,10 @@ expresion
     | PAREN_A expresion PAREN_C     { $$ = $2; }
     | ENTERO            { $$ = parseInt($1); }
     | DECIMAL           { $$ = parseFloat($1); }
-    | STRING_LIT        { $$ = $1; }
+    | STRING_LIT        { $$ = $1.replace(/"/g,''); }
     | BOOL_TRUE         { $$ = true; }
     | BOOL_FALSE        { $$ = false; }
-    | VAR               { $$ = { tipo:'var', nombre:$1 }; }
-    | VAR SECC_A expresion SECC_C   { $$ = { tipo:'array_acc', nombre:$1, indice:$3 }; }
+    | VAR               { $$ = { tipo:'var', nombre:$1.substring(1) }; }
+    | VAR SECC_A expresion SECC_C   { $$ = { tipo:'array_acc', nombre:$1.substring(1), indice:$3 }; }
     | IDENTIFICADOR     { $$ = { tipo:'ident', nombre:$1 }; }
     ;

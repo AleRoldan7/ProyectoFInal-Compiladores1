@@ -72,12 +72,12 @@
   }
 */
 var parser = (function(){
-var o=function(k,v,o,l){for(o=o||{},l=k.length;l--;o[k[l]]=v);return o},$V0=[1,9],$V1=[1,10],$V2=[5,12,13],$V3=[1,21],$V4=[1,24],$V5=[1,23],$V6=[1,27],$V7=[17,23],$V8=[16,17];
+var o=function(k,v,o,l){for(o=o||{},l=k.length;l--;o[k[l]]=v);return o},$V0=[1,9],$V1=[1,10],$V2=[5,12,13],$V3=[1,21],$V4=[1,24],$V5=[1,23],$V6=[1,27],$V7=[17,24],$V8=[16,17];
 var parser = {trace: function trace () { },
 yy: {},
-symbols_: {"error":2,"inicio":3,"lista_sentencias":4,"EOF":5,"sentencia":6,"crear_tabla":7,"seleccionar":8,"insertar":9,"actualizar":10,"eliminar":11,"TABLE":12,"IDENTIFICADOR":13,"COLUMNS":14,"lista_columnas":15,"PUNTO_COMA":16,"COMA":17,"columna_def":18,"IGUAL":19,"PUNTO":20,"CORCH_A":21,"lista_asignaciones_db":22,"CORCH_C":23,"IN":24,"valor_id":25,"DELETE":26,"asignacion_db":27,"STRING_LIT":28,"DECIMAL":29,"ENTERO":30,"$accept":0,"$end":1},
-terminals_: {2:"error",5:"EOF",12:"TABLE",13:"IDENTIFICADOR",14:"COLUMNS",16:"PUNTO_COMA",17:"COMA",19:"IGUAL",20:"PUNTO",21:"CORCH_A",23:"CORCH_C",24:"IN",26:"DELETE",28:"STRING_LIT",29:"DECIMAL",30:"ENTERO"},
-productions_: [0,[3,2],[4,2],[4,1],[6,1],[6,1],[6,1],[6,1],[6,1],[7,5],[15,3],[15,1],[18,3],[8,4],[9,4],[10,7],[11,4],[22,3],[22,1],[27,3],[27,3],[27,3],[25,1],[25,1]],
+symbols_: {"error":2,"inicio":3,"lista_sentencias":4,"EOF":5,"sentencia":6,"crear_tabla":7,"seleccionar":8,"insertar":9,"actualizar":10,"eliminar":11,"TABLE":12,"IDENTIFICADOR":13,"COLUMNS":14,"lista_columnas":15,"PUNTO_COMA":16,"COMA":17,"columna_def":18,"IGUAL":19,"tipo_columna":20,"PUNTO":21,"CORCH_A":22,"lista_asignaciones_db":23,"CORCH_C":24,"IN":25,"valor_id":26,"DELETE":27,"asignacion_db":28,"STRING_LIT":29,"DECIMAL":30,"ENTERO":31,"$accept":0,"$end":1},
+terminals_: {2:"error",5:"EOF",12:"TABLE",13:"IDENTIFICADOR",14:"COLUMNS",16:"PUNTO_COMA",17:"COMA",19:"IGUAL",21:"PUNTO",22:"CORCH_A",24:"CORCH_C",25:"IN",27:"DELETE",29:"STRING_LIT",30:"DECIMAL",31:"ENTERO"},
+productions_: [0,[3,2],[4,2],[4,1],[6,1],[6,1],[6,1],[6,1],[6,1],[7,5],[15,3],[15,1],[18,3],[20,1],[8,4],[9,5],[10,7],[11,4],[23,3],[23,1],[28,3],[28,3],[28,3],[28,3],[26,1],[26,1]],
 performAction: function anonymous(yytext, yyleng, yylineno, yy, yystate /* action[1] */, $$ /* vstack */, _$ /* lstack */) {
 /* this == yyval */
 
@@ -89,49 +89,55 @@ break;
 case 2:
  this.$ = $$[$0-1]; this.$.push($$[$0]); 
 break;
-case 3: case 11: case 18:
+case 3: case 11: case 19:
  this.$ = [$$[$0]]; 
 break;
 case 9:
  this.$ = { tipo:'create', tabla:$$[$0-3], columnas:$$[$0-1] }; 
 break;
-case 10: case 17:
+case 10: case 18:
  this.$ = $$[$0-2]; this.$.push($$[$0]); 
 break;
 case 12:
  this.$ = { nombre:$$[$0-2], tipo:$$[$0] }; 
 break;
 case 13:
- this.$ = { tipo:'select', tabla:$$[$0-3], columna:$$[$0-1] }; 
+ this.$ = $$[$0]; 
 break;
 case 14:
- this.$ = { tipo:'insert', tabla:$$[$0-3], valores:$$[$0-1] }; 
+ this.$ = { tipo:'select', tabla:$$[$0-3], columna:$$[$0-1] }; 
 break;
 case 15:
- this.$ = { tipo:'update', tabla:$$[$0-6], valores:$$[$0-4], id:$$[$0-1] }; 
+ this.$ = { tipo:'insert', tabla:$$[$0-4], valores:$$[$0-2] }; 
 break;
 case 16:
+ this.$ = { tipo:'update', tabla:$$[$0-6], valores:$$[$0-4], id:$$[$0-1] }; 
+break;
+case 17:
  this.$ = { tipo:'delete', tabla:$$[$0-3], id:$$[$0-1] }; 
 break;
-case 19:
- this.$ = { col:$$[$0-2], val:$$[$0] }; 
-break;
 case 20:
- this.$ = { col:$$[$0-2], val:parseFloat($$[$0]) }; 
+ this.$ = { col:$$[$0-2], val:$$[$0].replace(/"/g,'') }; 
 break;
 case 21:
- this.$ = { col:$$[$0-2], val:parseInt($$[$0]) }; 
+ this.$ = { col:$$[$0-2], val:parseFloat($$[$0]) }; 
 break;
 case 22:
- this.$ = parseInt($$[$0]); 
+ this.$ = { col:$$[$0-2], val:parseInt($$[$0]) }; 
 break;
 case 23:
+ this.$ = { col:$$[$0-2], val:$$[$0] }; 
+break;
+case 24:
+ this.$ = parseInt($$[$0]); 
+break;
+case 25:
  this.$ = parseFloat($$[$0]); 
 break;
 }
 },
-table: [{3:1,4:2,6:3,7:4,8:5,9:6,10:7,11:8,12:$V0,13:$V1},{1:[3]},{5:[1,11],6:12,7:4,8:5,9:6,10:7,11:8,12:$V0,13:$V1},o($V2,[2,3]),o($V2,[2,4]),o($V2,[2,5]),o($V2,[2,6]),o($V2,[2,7]),o($V2,[2,8]),{13:[1,13]},{20:[1,14],21:[1,15],26:[1,16]},{1:[2,1]},o($V2,[2,2]),{14:[1,17]},{13:[1,18]},{13:$V3,22:19,27:20},{25:22,29:$V4,30:$V5},{13:$V6,15:25,18:26},{16:[1,28]},{17:[1,30],23:[1,29]},o($V7,[2,18]),{19:[1,31]},{16:[1,32]},{16:[2,22]},{16:[2,23]},{16:[1,33],17:[1,34]},o($V8,[2,11]),{19:[1,35]},o($V2,[2,13]),o($V2,[2,14],{24:[1,36]}),{13:$V3,27:37},{28:[1,38],29:[1,39],30:[1,40]},o($V2,[2,16]),o($V2,[2,9]),{13:$V6,18:41},{13:[1,42]},{25:43,29:$V4,30:$V5},o($V7,[2,17]),o($V7,[2,19]),o($V7,[2,20]),o($V7,[2,21]),o($V8,[2,10]),o($V8,[2,12]),{16:[1,44]},o($V2,[2,15])],
-defaultActions: {11:[2,1],23:[2,22],24:[2,23]},
+table: [{3:1,4:2,6:3,7:4,8:5,9:6,10:7,11:8,12:$V0,13:$V1},{1:[3]},{5:[1,11],6:12,7:4,8:5,9:6,10:7,11:8,12:$V0,13:$V1},o($V2,[2,3]),o($V2,[2,4]),o($V2,[2,5]),o($V2,[2,6]),o($V2,[2,7]),o($V2,[2,8]),{13:[1,13]},{21:[1,14],22:[1,15],27:[1,16]},{1:[2,1]},o($V2,[2,2]),{14:[1,17]},{13:[1,18]},{13:$V3,23:19,28:20},{26:22,30:$V4,31:$V5},{13:$V6,15:25,18:26},{16:[1,28]},{17:[1,30],24:[1,29]},o($V7,[2,19]),{19:[1,31]},{16:[1,32]},{16:[2,24]},{16:[2,25]},{16:[1,33],17:[1,34]},o($V8,[2,11]),{19:[1,35]},o($V2,[2,14]),{16:[1,36],25:[1,37]},{13:$V3,28:38},{13:[1,42],29:[1,39],30:[1,40],31:[1,41]},o($V2,[2,17]),o($V2,[2,9]),{13:$V6,18:43},{13:[1,45],20:44},o($V2,[2,15]),{26:46,30:$V4,31:$V5},o($V7,[2,18]),o($V7,[2,20]),o($V7,[2,21]),o($V7,[2,22]),o($V7,[2,23]),o($V8,[2,10]),o($V8,[2,12]),o($V8,[2,13]),{16:[1,47]},o($V2,[2,16])],
+defaultActions: {11:[2,1],23:[2,24],24:[2,25]},
 parseError: function parseError (str, hash) {
     if (hash.recoverable) {
         this.trace(str);
@@ -614,21 +620,21 @@ case 2:return 12;
 break;
 case 3:return 14;
 break;
-case 4:return 26;
+case 4:return 27;
 break;
-case 5:return 24;
+case 5:return 25;
 break;
-case 6:return 28;
+case 6:return 29;
 break;
-case 7:return 29;
+case 7:return 30;
 break;
-case 8:return 30;
+case 8:return 31;
 break;
-case 9:return 21;
+case 9:return 22;
 break;
-case 10:return 23;
+case 10:return 24;
 break;
-case 11:return 20;
+case 11:return 21;
 break;
 case 12:return 17;
 break;

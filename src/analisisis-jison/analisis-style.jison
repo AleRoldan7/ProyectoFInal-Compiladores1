@@ -1,12 +1,10 @@
 %lex
 %%
 
-/* ANALISIS LEXICO */
-
 \s+                             /* ignorar */
-"/*"[\s\S]*?"*/"                /* ignorar comentarios multilinea */
+"/*"[\s\S]*?"*/"                    /* comentario bloque */
 
-/* PALABRAS RESERVADAS */
+/* PALABRAS RESERVADAS — las de varias palabras PRIMERO */
 "background color"              return 'BACKGROUND_COLOR';
 "text align"                    return 'TEXT_ALIGN';
 "text size"                     return 'TEXT_SIZE';
@@ -27,7 +25,6 @@
 "max-width"                     return 'MAX_WIDTH';
 "height"                        return 'HEIGHT';
 "width"                         return 'WIDTH';
-"color"                         return 'COLOR';
 "border top style"              return 'BORDER_TOP_STYLE';
 "border top"                    return 'BORDER_TOP';
 "border bottom style"           return 'BORDER_BOTTOM_STYLE';
@@ -41,6 +38,7 @@
 "border width"                  return 'BORDER_WIDTH';
 "border color"                  return 'BORDER_COLOR';
 "border"                        return 'BORDER';
+"color"                         return 'COLOR';
 "extends"                       return 'EXTENDS';
 "@for"                          return 'FOR';
 "from"                          return 'FROM';
@@ -63,7 +61,7 @@
 /* LITERALES */
 [0-9]+\.[0-9]+"px"              return 'PIXEL';
 [0-9]+"px"                      return 'PIXEL';
-"#"[0-9a-fA-F]+                 return 'COLOR_VALUE';
+"#"[0-9a-fA-F]{3,8}            return 'COLOR_VALUE';
 [0-9]+\.[0-9]+"%"               return 'PORCENTAJE';
 [0-9]+"%"                       return 'PORCENTAJE';
 [0-9]+\.[0-9]+                  return 'DECIMAL';
@@ -80,17 +78,20 @@
 ";"                             return 'PUNTO_COMA';
 "="                             return 'IGUAL';
 
-[a-zA-Z][a-zA-Z0-9_-]*         return 'IDENTIFICADOR';
+[a-zA-Z][a-zA-Z0-9_\-]*        return 'IDENTIFICADOR';
 
 <<EOF>>                         return 'EOF';
-
-.   {
-      yy.manejador.errorLexico(yytext, yylloc.first_line, yylloc.first_column + 1);
+.   { 
+        yy.manejador.errorLexico
+        (
+                yytext, 
+                yylloc.first_line, 
+                yylloc.first_column + 1
+        ); 
     }
 
 /lex
 
-/* PRECEDENCIA */
 %left MAS MENOS
 %left MULT DIV
 %right UMENOS
@@ -99,15 +100,21 @@
 %%
 
 inicio
-    : lista_estilos EOF
-        { return $1; }
+    : lista_estilos EOF   
+    { 
+        return $1; 
+    }
     ;
 
 lista_estilos
-    : lista_estilos estilo_o_for
-        { $$ = $1; $$.push($2); }
-    | estilo_o_for
-        { $$ = [$1]; }
+    : lista_estilos estilo_o_for  
+    { 
+        $$ = $1; $$.push($2); 
+    }
+    | estilo_o_for                
+    { 
+        $$ = [$1]; 
+    }
     ;
 
 estilo_o_for
@@ -115,29 +122,57 @@ estilo_o_for
     | bucle_for
     ;
 
-/* CLASE */
 definicion_clase
-    : IDENTIFICADOR LLAVE_A declaraciones LLAVE_C
-        { $$ = { tipo:'clase', nombre:$1, propiedades:$3, extiende:null }; }
-    | IDENTIFICADOR EXTENDS IDENTIFICADOR LLAVE_A declaraciones LLAVE_C
-        { $$ = { tipo:'clase', nombre:$1, propiedades:$5, extiende:$3 }; }
+    : IDENTIFICADOR LLAVE_A lista_declaraciones LLAVE_C
+        { 
+            $$ = { 
+                    tipo:'clase', 
+                    nombre:$1, 
+                    propiedades:$3, 
+                    extiende:null 
+                }; 
+        }
+    | IDENTIFICADOR EXTENDS IDENTIFICADOR LLAVE_A lista_declaraciones LLAVE_C
+        { 
+            $$ = { 
+                    tipo:'clase', 
+                    nombre:$1, 
+                    propiedades:$5, 
+                    extiende:$3 
+                }; 
+        }
     ;
 
-declaraciones
-    : declaraciones declaracion
-        { $$ = $1; $$.push($2); }
-    | declaracion
-        { $$ = [$1]; }
+lista_declaraciones
+    : lista_declaraciones declaracion  
+    { 
+        $$ = $1; $$.push($2); 
+    }
+    | /* vacío */                      
+    { 
+        $$ = []; 
+    }
     ;
 
 declaracion
     : propiedad IGUAL valor PUNTO_COMA
-        { $$ = { propiedad:$1, valor:$3, linea:this._$.first_line }; }
+        { 
+            $$ = { 
+                    propiedad:$1, 
+                    valor:$3, 
+                    linea:@1.first_line 
+                }; 
+        }
     | propiedad IGUAL valor_borde PUNTO_COMA
-        { $$ = { propiedad:$1, valor:$3, linea:this._$.first_line }; }
+        { 
+            $$ = { 
+                    propiedad:$1, 
+                    valor:$3, 
+                    linea:@1.first_line 
+                }; 
+        }
     ;
 
-/* PROPIEDADES */
 propiedad
     : HEIGHT            { $$ = 'height'; }
     | WIDTH             { $$ = 'width'; }
@@ -148,7 +183,7 @@ propiedad
     | BACKGROUND_COLOR  { $$ = 'background-color'; }
     | COLOR             { $$ = 'color'; }
     | TEXT_ALIGN        { $$ = 'text-align'; }
-    | TEXT_SIZE         { $$ = 'text-size'; }
+    | TEXT_SIZE         { $$ = 'font-size'; }
     | TEXT_FONT         { $$ = 'font-family'; }
     | PADDING           { $$ = 'padding'; }
     | PADDING_LEFT      { $$ = 'padding-left'; }
@@ -175,21 +210,26 @@ propiedad
     | BORDER_RIGHT_STYLE{ $$ = 'border-right-style'; }
     ;
 
-/* VALORES */
 valor
-    : expresion         { $$ = $1; }
-    | COLOR_VALUE       { $$ = $1; }
-    | LIGHTGRAY         { $$ = 'lightgray'; }
-    | alineacion        { $$ = $1; }
+    : expresion           { $$ = $1; }
+    | COLOR_VALUE         { $$ = $1; }
+    | LIGHTGRAY           { $$ = 'lightgray'; }
+    | alineacion          { $$ = $1; }
     | estilo_borde_simple { $$ = $1; }
-    | fuente            { $$ = $1; }
-    | IDENTIFICADOR     { $$ = $1; }
+    | fuente              { $$ = $1; }
+    | IDENTIFICADOR       { $$ = $1; }
     ;
 
-/* ABREVIATURA: border = 2 solid red / 2px solid color */
 valor_borde
     : expresion estilo_borde_simple color_val
-        { $$ = { ancho:$1, estilo:$2, color:$3 }; }
+        { 
+            $$ = { 
+                    tipo:'borde', 
+                    ancho:$1, 
+                    estilo:$2, 
+                    color:$3 
+                }; 
+        }
     ;
 
 color_val
@@ -212,55 +252,132 @@ estilo_borde_simple
     ;
 
 fuente
-    : HELVETICA     { $$ = 'Helvetica'; }
+    : HELVETICA     { $$ = 'Helvetica, sans-serif'; }
     | SANS_SERIF    { $$ = 'sans-serif'; }
-    | SANS          { $$ = 'sans'; }
+    | SANS          { $$ = 'sans-serif'; }
     | MONO          { $$ = 'monospace'; }
     | CURSIVE       { $$ = 'cursive'; }
     ;
 
-/* EXPRESIONES ARITMETICAS */
 expresion
-    : expresion MAS expresion
-        { $$ = { op:'+', izq:$1, der:$3 }; }
-    | expresion MENOS expresion
-        { $$ = { op:'-', izq:$1, der:$3 }; }
-    | expresion MULT expresion
-        { $$ = { op:'*', izq:$1, der:$3 }; }
-    | expresion DIV expresion
-        { $$ = { op:'/', izq:$1, der:$3 }; }
-    | MENOS expresion %prec UMENOS
-        { $$ = { op:'neg', val:$2 }; }
-    | ENTERO            { $$ = parseInt($1); }
-    | DECIMAL           { $$ = parseFloat($1); }
-    | PIXEL             { $$ = $1; }
-    | PORCENTAJE        { $$ = $1; }
-    | CONTADOR          { $$ = { tipo:'contador', nombre:$1 }; }
+    : expresion MAS expresion    
+    { 
+        $$ = { 
+                op:'+', 
+                izq:$1, 
+                der:$3 
+            }; 
+    }
+    | expresion MENOS expresion  
+    { 
+        $$ = { 
+                op:'-', 
+                izq:$1, 
+                der:$3 
+            }; 
+    }
+    | expresion MULT expresion   
+    { 
+        $$ = { 
+                op:'*', 
+                izq:$1, 
+                der:$3 
+            };
+    }
+    | expresion DIV expresion    
+    { 
+        $$ = { 
+                op:'/', 
+                izq:$1, 
+                der:$3 
+            }; 
+    }
+    | MENOS expresion %prec UMENOS 
+    { 
+        $$ = { 
+                op:'neg', 
+                val:$2 
+            }; 
+    }
+    | ENTERO       
+    { 
+        $$ = parseInt($1); 
+    }
+    | DECIMAL      
+    { 
+        $$ = parseFloat($1); 
+    }
+    | PIXEL        
+    { 
+        $$ = $1; 
+    }
+    | PORCENTAJE   
+    { 
+        $$ = $1; 
+    }
+    | CONTADOR     
+    { 
+        $$ = { 
+                tipo:'contador', 
+                nombre:$1.substring(1) 
+            }; 
+    }
     ;
 
-/* FOR */
 bucle_for
     : FOR CONTADOR FROM expresion THROUGH expresion LLAVE_A cuerpo_for LLAVE_C
-        { $$ = { tipo:'for', var:$2, inicio:$4, fin:$6, inclusivo:true, cuerpo:$8 }; }
+    { 
+        $$ = { 
+                tipo:'for', 
+                var:$2.substring(1), 
+                inicio:$4, 
+                fin:$6, 
+                inclusivo:true, 
+                cuerpo:$8 
+            }; 
+    }
     | FOR CONTADOR FROM expresion TO expresion LLAVE_A cuerpo_for LLAVE_C
-        { $$ = { tipo:'for', var:$2, inicio:$4, fin:$6, inclusivo:false, cuerpo:$8 }; }
+        { 
+            $$ = { 
+                    tipo:'for', 
+                    var:$2.substring(1), 
+                    inicio:$4, 
+                    fin:$6, 
+                    inclusivo:false, 
+                    cuerpo:$8 
+                }; 
+        }
     ;
 
 cuerpo_for
-    : cuerpo_for clase_for
-        { $$ = $1; $$.push($2); }
-    | clase_for
-        { $$ = [$1]; }
+    : cuerpo_for clase_for  
+    { 
+        $$ = $1; $$.push($2);
+    }
+    | clase_for             
+    { 
+        $$ = [$1]; 
+    }
     ;
 
 clase_for
-    : nombre_for LLAVE_A declaraciones LLAVE_C
-        { $$ = { tipo:'clase_for', nombre:$1, propiedades:$3 }; }
+    : nombre_for LLAVE_A lista_declaraciones LLAVE_C
+        { 
+            $$ = { 
+                    tipo:'clase_for', 
+                    nombre:$1, 
+                    propiedades:$3 
+                }; 
+        }
     ;
 
 nombre_for
-    : IDENTIFICADOR CONTADOR
-        { $$ = $1 + $2; }
-    | IDENTIFICADOR
-        { $$ = $1; }
+    : IDENTIFICADOR CONTADOR  
+    { 
+        $$ = $1 + '-' + $2.substring(1); 
+    }
+    | IDENTIFICADOR           
+    { 
+        $$ = $1; 
+    }
     ;

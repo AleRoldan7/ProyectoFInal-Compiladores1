@@ -3,4 +3,6 @@ export interface NodoArchivo {
     tipo: 'archivo' | 'carpeta'
     contenido?: string
     hijos?: NodoArchivo[] 
+    open?: boolean,
+    padre?: NodoArchivo
 }

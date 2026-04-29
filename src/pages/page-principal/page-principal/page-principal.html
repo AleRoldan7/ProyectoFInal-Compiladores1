@@ -1,95 +1,325 @@
-<div class="container-fluid ide">
+<div class="ide">
 
-  <div class="row h-100">
+  <!-- TITLEBAR -->
+  <div class="titlebar">
+    <div class="dot dot-r"></div>
+    <div class="dot dot-y"></div>
+    <div class="dot dot-g"></div>
+    <span class="titlebar-title">YFERA Framework — IDE</span>
+  </div>
+
+  <!-- TOOLBAR -->
+  <div class="toolbar">
+
+    <button class="tool-btn" (click)="crearArchivo()">
+      <span class="material-icons">description</span>
+    </button>
+
+    <button class="tool-btn" (click)="crearCarpeta()">
+      <span class="material-icons">folder</span>
+    </button>
+
+    <div class="tool-sep"></div>
+
+    <button class="tool-btn" (click)="exportarZip()">
+      <span class="material-icons">download</span>
+    </button>
+
+    <button class="tool-btn" (click)="abrirProyecto()">
+      <span class="material-icons">folder_open</span>
+    </button>
+
+    <div class="tool-sep"></div>
+
+    <button class="tool-btn" (click)="verArbolTrabajo()">
+      <span class="material-icons">account_tree</span>
+    </button>
+
+    <button class="tool-btn" (click)="verBaseDeDatos()">
+      <span class="material-icons">storage</span>
+    </button>
+
+    <div class="tool-sep"></div>
+
+    <button class="tool-btn run" (click)="ejecutar()">
+      <span class="material-icons">play_arrow</span>
+    </button>
+
+  </div>
+
+  <div class="main">
 
     <!-- SIDEBAR -->
-    <div class="col-3 sidebar">
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <span class="sidebar-title">explorador</span>
 
-      <div class="acciones-globales">
-        <button class="btn btn-sm btn-success" (click)="crearCarpeta()">+ Carpeta</button>
-        <button class="btn btn-sm btn-primary" (click)="crearArchivo()">+ Archivo</button>
+        <div class="sidebar-actions">
+          <button class="icon-btn" (click)="colapsarTodo()">
+            <span class="material-icons">unfold_less</span>
+          </button>
+
+          <button class="icon-btn" (click)="expandirTodo()">
+            <span class="material-icons">unfold_more</span>
+          </button>
+        </div>
       </div>
 
-      <ul class="tree">
-        <ng-container *ngFor="let nodo of arbol">
-          <ng-template 
-            [ngTemplateOutlet]="nodoTemplate"
-            [ngTemplateOutletContext]="{ nodo: nodo, lista: arbol }">
-          </ng-template>
-        </ng-container>
-      </ul>
-
+      <div class="tree">
+        <ul>
+          <ng-container *ngFor="let nodo of arbol">
+            <ng-template [ngTemplateOutlet]="nodoTemplate" [ngTemplateOutletContext]="{ nodo: nodo, lista: arbol }">
+            </ng-template>
+          </ng-container>
+        </ul>
+      </div>
     </div>
 
     <!-- EDITOR -->
-    <div class="col-9 editor">
+    <div class="editor-area">
 
-      <div class="topbar">
-        <span *ngIf="archivoActual">
-          {{ archivoActual.nombre }}
+      <!-- TABS -->
+      <div class="tabs-bar">
+        <span class="no-tab-msg" *ngIf="editor.pestanasAbiertas.length === 0">
+          abre un archivo para editar
         </span>
 
-        <button class="btn btn-success btn-sm" (click)="ejecutar()">
-          ▶ Ejecutar
-        </button>
+        <div *ngFor="let tab of editor.pestanasAbiertas" class="tab"
+          [class.active]="editor.archivoActual?.nombre === tab.nombre" [style.border-top-color]="editor.archivoActual?.nombre === tab.nombre 
+              ? fileTree.getColor(tab.nombre) : 'transparent'" (click)="switchTab(tab)">
+
+          <span [style.color]="fileTree.getColor(tab.nombre)">
+            {{ tab.nombre }}
+          </span>
+
+          <button class="tab-close" (click)="cerrarTab($event, tab)">
+            <span class="material-icons">close</span>
+          </button>
+        </div>
       </div>
 
-      <textarea
-        [(ngModel)]="contenido"
-        (input)="guardarContenido()"
-        class="form-control editor-textarea">
-      </textarea>
+      <!-- ACTION BAR -->
+      <div class="editor-actions-bar" *ngIf="editor.archivoActual">
+
+        <span class="editor-lang-badge" [style.color]="fileTree.getColor(editor.archivoActual.nombre)">
+          {{ fileTree.getLang(editor.archivoActual.nombre) }}
+        </span>
+
+        <button class="editor-action-btn" (click)="editor.autoIndentar()">
+          <span class="material-icons">format_indent_increase</span>
+        </button>
+
+        <button class="editor-action-btn" *ngIf="editor.archivoActual.nombre.endsWith('.y')"
+          (click)="editor.validarImports(arbol)">
+          <span class="material-icons">link</span>
+        </button>
+
+        <div class="import-errors-badge" *ngIf="editor.importErrors.length > 0" (click)="mostrarErroresImport()">
+          ⚠ {{ editor.importErrors.length }}
+        </div>
+
+        <span class="editor-chars">
+          {{ editor.contenido.length }} chars
+        </span>
+
+      </div>
+
+      <!-- EDITOR BODY -->
+      <div class="editor-body">
+
+        <!-- LINE NUMBERS -->
+        <div class="line-numbers" #lineNums>
+          <div *ngFor="let n of editor.lineas" [class.line-error]="editor.tieneErrorImport(n)">
+            {{ n }}
+          </div>
+        </div>
+
+        <!-- CODE -->
+        <div class="code-wrapper" #wrapper>
+
+          <!-- CAPA DE RESALTADO -->
+          <pre class="code-highlight-layer" #highlightLayer [innerHTML]="editor.codigoColoreado"></pre>
+
+          <!-- TEXTAREA -->
+          <textarea #textarea class="code-editor-transparent" [(ngModel)]="editor.contenido" (input)="onEdit()"
+            (scroll)="syncScroll(textarea, highlightLayer)" (keydown)="handleKeydown($event)"
+            (keyup)="updatePos(textarea)" (click)="updatePos(textarea)" spellcheck="false">
+          </textarea>
+
+        </div>
+
+      </div>
+
+      <!-- IMPORT ERRORS PANEL -->
+      <div class="import-errors-panel" *ngIf="editor.importErrors.length > 0">
+
+        <div class="import-errors-header">
+          <span>Errores de import</span>
+          <button class="import-close-btn" (click)="editor.importErrors = []">
+            ✕
+          </button>
+        </div>
+
+        <div class="import-error-item" *ngFor="let err of editor.importErrors">
+
+          <span class="import-err-linea">
+            Línea {{ err.linea }}
+          </span>
+
+          <span class="import-err-ruta">
+            {{ err.ruta }}
+          </span>
+
+          <span class="import-err-msg">
+            {{ err.mensaje }}
+          </span>
+
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- BOTTOM -->
+  <div class="bottombar">
+
+    <div class="bottombar-tabs">
+      <div class="btab" [class.active]="consolaMode === 'console'" (click)="consolaMode = 'console'">
+        consola
+      </div>
+
+      <div class="btab" [class.active]="consolaMode === 'errors'" (click)="consolaMode = 'errors'">
+        errores {{ compiler.errores.length }}
+      </div>
+
+      <div class="btab" [class.active]="consolaMode === 'terminal'" (click)="consolaMode = 'terminal'">
+        terminal
+      </div>
+    </div>
+
+    <!-- CONSOLA -->
+    <div class="console-out" *ngIf="consolaMode === 'console'">
+      <div *ngFor="let line of compiler.consolaLines" [innerHTML]="line"></div>
+    </div>
+
+    <!-- ERRORES -->
+    <div class="console-out" *ngIf="consolaMode === 'errors'">
+
+      <table class="error-table" *ngIf="compiler.errores.length > 0">
+
+        <tr>
+          <th>#</th>
+          <th>Lexema</th>
+          <th>Línea</th>
+          <th>Col</th>
+          <th>Tipo</th>
+          <th>Desc</th>
+        </tr>
+
+        <tr *ngFor="let e of compiler.errores; let i = index">
+          <td class="err-num">{{ i + 1 }}</td>
+          <td class="err-lexema">{{ e.lexema }}</td>
+          <td>{{ e.linea }}</td>
+          <td>{{ e.columna }}</td>
+          <td>
+            <span class="err-badge" [ngClass]="{
+                    'badge-lexico': e.tipo === 'Léxico',
+                    'badge-sintactico': e.tipo === 'Sintáctico',
+                    'badge-semantico': e.tipo === 'Semántico'
+                  }">
+              {{ e.tipo }}
+            </span>
+          </td>
+          <td class="err-desc">{{ e.descripcion }}</td>
+        </tr>
+
+      </table>
+
+      <div *ngIf="compiler.errores.length === 0" class="no-errors-msg">
+        ✔ No hay errores
+      </div>
+
+    </div>
+
+    <!-- TERMINAL -->
+    <div class="terminal-container" *ngIf="consolaMode === 'terminal'">
+
+      <div class="terminal-body" #terminalBody>
+        <div *ngFor="let linea of terminal.terminalLineas" class="term-line" [class.term-input]="linea.tipo === 'input'"
+          [class.term-output]="linea.tipo === 'output'" [class.term-error]="linea.tipo === 'error'"
+          [class.term-info]="linea.tipo === 'info'">
+          {{ linea.texto }}
+        </div>
+      </div>
+
+      <div class="terminal-input-row">
+        <span class="terminal-prompt">></span>
+
+        <input class="terminal-input" [(ngModel)]="terminal.terminalCmd" (keydown)="terminal.keydown($event)"
+          placeholder="Escribe un comando..." />
+
+        <button class="terminal-run-btn" (click)="terminal.ejecutar()">
+          <span class="material-icons">subdirectory_arrow_right</span>
+        </button>
+      </div>
 
     </div>
 
   </div>
 
+  <!-- STATUS -->
+  <div class="statusbar">
+    <span>{{ editor.archivoActual?.nombre || 'sin archivo' }}</span>
+
+    <span [style.color]="editor.archivoActual ? fileTree.getColor(editor.archivoActual.nombre) : ''">
+      {{ editor.archivoActual ? fileTree.getLang(editor.archivoActual.nombre) : '—' }}
+    </span>
+
+    <span class="status-pos">
+      {{ editor.cursorPos }}
+    </span>
+  </div>
+
 </div>
 
-<!-- TEMPLATE RECURSIVO -->
+<!-- TEMPLATE NODO -->
 <ng-template #nodoTemplate let-nodo="nodo" let-lista="lista">
-
   <li>
 
-    <div class="nodo">
+    <div class="tree-row" (click)="clickNodo(nodo)">
 
-      <!-- CLICK SOLO PARA SELECCIONAR -->
-      <span 
-        (click)="seleccionar(nodo)"
-        [class.activo]="archivoActual === nodo">
-
-        {{ nodo.tipo === 'carpeta' ? '📁' : '📄' }} {{ nodo.nombre }}
+      <span class="material-icons item-icon" [style.color]="fileTree.getColor(nodo.nombre)">
+        {{ fileTree.getIcon(nodo) }}
+      </span>
+      
+      <span class="item-name" [style.color]="nodo.tipo === 'archivo' ? fileTree.getColor(nodo.nombre) : ''">
+        {{ nodo.nombre }}
       </span>
 
-      <!-- BOTONES -->
-      <div class="acciones">
+      <div class="row-btns">
 
-        <button (click)="crearArchivo(nodo); $event.stopPropagation()">
-          📄+
+        <button class="row-btn" *ngIf="nodo.tipo === 'carpeta'" (click)="crearArchivoEn($event, nodo)">
+          <span class="material-icons">note_add</span>
         </button>
 
-        <button (click)="crearCarpeta(nodo); $event.stopPropagation()">
-          📁+
+        <button class="row-btn" *ngIf="nodo.tipo === 'carpeta'" (click)="crearCarpetaEn($event, nodo)">
+          <span class="material-icons">create_new_folder</span>
         </button>
 
-        <button (click)="eliminar(nodo, lista); $event.stopPropagation()">
-          ❌
+        <button class="row-btn delete" (click)="eliminar($event, nodo, lista)">
+          <span class="material-icons">delete</span>
         </button>
 
       </div>
 
     </div>
 
-    <!-- HIJOS -->
-    <ul *ngIf="nodo.hijos?.length">
+    <ul *ngIf="nodo.tipo === 'carpeta' && nodo.open">
       <ng-container *ngFor="let hijo of nodo.hijos">
-        <ng-template
-          [ngTemplateOutlet]="nodoTemplate"
-          [ngTemplateOutletContext]="{ nodo: hijo, lista: nodo.hijos }">
+        <ng-template [ngTemplateOutlet]="nodoTemplate" [ngTemplateOutletContext]="{ nodo: hijo, lista: nodo.hijos }">
         </ng-template>
       </ng-container>
     </ul>
 
   </li>
-
 </ng-template>
