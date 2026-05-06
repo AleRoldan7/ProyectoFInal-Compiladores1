@@ -13,7 +13,8 @@
 "function"      return 'T_FUNCTION';
 
 /* PALABRAS RESERVADAS */
-"for each"      return 'FOR_EACH';
+"for each"       return 'FOR_EACH';
+"to"            return 'TO';
 "for"           return 'FOR';
 "if"            return 'IF';
 "else"          return 'ELSE';
@@ -66,6 +67,7 @@
 "("             return 'PAREN_A';
 ")"             return 'PAREN_C';
 /* ANGULARES — tokens propios, separados de GT/LT */
+".."            return 'RANGO';
 "<"             return 'ANGLE_A';
 ">"             return 'ANGLE_C';
 ","             return 'COMA';
@@ -103,7 +105,11 @@
 %%
 
 inicio
-    : lista_componentes EOF   { return $1; }
+    : lista_componentes EOF   
+    {
+        console.log("Componentes parseados:", $1.length); 
+        return $1; 
+    }
     ;
 
 lista_componentes
@@ -125,8 +131,14 @@ lista_params
     ;
 
 param
-    : tipo IDENTIFICADOR        { $$ = { tipo:$1, nombre:$2 }; }
-    | tipo VAR                  { $$ = { tipo:$1, nombre:$2.substring(1) }; }
+    : tipo IDENTIFICADOR        
+        { $$ = { tipo:$1, nombre:$2, esArray: false }; }
+    | tipo VAR                  
+        { $$ = { tipo:$1, nombre:$2.substring(1), esArray: false }; }
+    | tipo SECC_A SECC_C IDENTIFICADOR   
+        { $$ = { tipo:$1, nombre:$4, esArray: true }; }
+    | tipo SECC_A SECC_C VAR             
+        { $$ = { tipo:$1, nombre:$4.substring(1), esArray: true }; }
     ;
 
 tipo
@@ -137,7 +149,7 @@ tipo
     | T_CHAR     { $$ = 'char'; }
     | T_FUNCTION { $$ = 'function'; }
     ;
-
+    
 /* ELEMENTOS */
 lista_elementos
     : lista_elementos elemento  { $$ = $1; $$.push($2); }
@@ -192,11 +204,13 @@ celda
 
 /* TEXTO */
 texto
-    : TEXTO lista_estilos_ang PAREN_A STRING_LIT PAREN_C
+    : TEXTO lista_estilos_ang PAREN_A expresion PAREN_C
         { $$ = { tipo:'texto', estilos:$2, contenido:$4 }; }
-    | TEXTO PAREN_A STRING_LIT PAREN_C
+    | TEXTO PAREN_A expresion PAREN_C
         { $$ = { tipo:'texto', estilos:[], contenido:$3 }; }
     ;
+
+
 
 /* IMAGEN */
 imagen
@@ -238,7 +252,7 @@ lista_inputs
     | /* vacío */                   { $$ = []; }
     ;
 
-/* INPUT acepta tanto { como ( para mayor compatibilidad */
+/* INPUT  */
 input_elemento
     : INPUT_TEXT lista_estilos_ang LLAVE_A propiedades_input LLAVE_C
         { $$ = { tipo:'input_text', estilos:$2, props:Object.fromEntries($4.map(p=>[p.clave,p.valor])) }; }
@@ -315,12 +329,39 @@ arg_submit
 
 /* CICLOS Y CONDICIONALES */
 ciclo_for_each
-    : FOR_EACH PAREN_A VAR DOS_PUNTOS VAR PAREN_C LLAVE_A lista_elementos LLAVE_C
-        { $$ = { tipo:'for_each', item:$3, array:$5, cuerpo:$8, vacio:null }; }
-    | FOR PAREN_A VAR DOS_PUNTOS VAR COMA VAR DOS_PUNTOS VAR PAREN_C TRACK VAR
+    : FOR_EACH PAREN_A VAR DOS_PUNTOS VAR PAREN_C 
+      LLAVE_A lista_elementos LLAVE_C
+        { $$ = { tipo:'for_each', item:$3, array:{tipo:'var', nombre:$5.substring(1)}, 
+                 cuerpo:$8, vacio:null }; }
+
+    | FOR_EACH PAREN_A VAR DOS_PUNTOS IDENTIFICADOR PAREN_C 
+      LLAVE_A lista_elementos LLAVE_C
+        { $$ = { tipo:'for_each', item:$3, array:{tipo:'ident', nombre:$5}, 
+                 cuerpo:$8, vacio:null }; }
+
+    | FOR_EACH PAREN_A VAR DOS_PUNTOS VAR PAREN_C 
       LLAVE_A lista_elementos LLAVE_C EMPTY LLAVE_A lista_elementos LLAVE_C
-        { $$ = { tipo:'for_each_complejo', items:[$3,$7], arrays:[$5,$9],
-                 track:$12, cuerpo:$14, vacio:$18 }; }
+        { $$ = { tipo:'for_each', item:$3, array:{tipo:'var', nombre:$5.substring(1)}, 
+                 cuerpo:$8, vacio:$12 }; }
+
+    | FOR_EACH PAREN_A VAR DOS_PUNTOS IDENTIFICADOR PAREN_C 
+      LLAVE_A lista_elementos LLAVE_C EMPTY LLAVE_A lista_elementos LLAVE_C
+        { $$ = { tipo:'for_each', item:$3, array:{tipo:'ident', nombre:$5}, 
+                 cuerpo:$8, vacio:$12 }; }
+    ;
+
+ciclo_for_complejo
+    : FOR PAREN_A lista_pares VAR TRACK VAR PAREN_C LLAVE_A lista_elementos LLAVE_C EMPTY LLAVE_A lista_elementos LLAVE_C
+        { $$ = { tipo:'for_each_complejo', pares:$3, track:$6, cuerpo:$9, vacio:$13 }; }
+    ;
+
+lista_pares
+    : lista_pares COMA par  { $$ = $1; $$.push($3); }
+    | par                   { $$ = [$1]; }
+    ;
+
+par
+    : VAR DOS_PUNTOS VAR    { $$ = { item:$1, array:$3 }; }
     ;
 
 ciclo_for_comp
@@ -335,6 +376,10 @@ condicional_if
     | if_completo
     ;
 
+rango
+    : ENTERO PUNTO PUNTO expresion  { $$ = { desde:parseInt($1), hasta:$4, inclusivo:true }; }
+    | ENTERO TO expresion           { $$ = { desde:parseInt($1), hasta:$3, inclusivo:false }; }
+    ;
 /* IF SIN ELSE */
 if_simple
     : IF PAREN_A condicion PAREN_C LLAVE_A lista_elementos LLAVE_C

@@ -199,11 +199,123 @@ export class PagePrincipal {
 
   async ejecutar() {
     this.consolaMode = await this.compiler.ejecutar(this.arbol);
+    // Si hay errores, cambiar automáticamente a la pestaña de errores
+    if (this.compiler.errores.length > 0) {
+      this.consolaMode = 'errors';
+    }
+  }
+
+  cargarArchivos() {
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.multiple = true;
+    inp.accept = '.y,.comp,.dba,.styles';
+    inp.onchange = (e: any) => {
+      const files: FileList = e.target.files;
+      if (!files || files.length === 0) return;
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const reader = new FileReader();
+        reader.onload = (ev: any) => {
+          try {
+            const contenido = ev.target.result as string;
+            const nodo: NodoArchivo = {
+              nombre: file.name,
+              tipo: 'archivo',
+              contenido: contenido
+            };
+            this.arbol.push(nodo);
+            this.editor.abrirTab(nodo, this.arbol);
+            this.cdr.detectChanges();
+          } catch (err: any) {
+            Swal.fire({
+              icon: 'error',
+              title: 'Error al cargar archivo',
+              text: err.message
+            });
+          }
+        };
+        reader.readAsText(file);
+      }
+
+      Swal.fire({
+        icon: 'success',
+        title: 'Archivos cargados',
+        text: `${files.length} archivo(s) agregado(s) al proyecto`,
+        timer: 2000
+      });
+    };
+    inp.click();
+  }
+
+  guardarPaginaCompilada() {
+    const ventanaAbierta = window.open();
+    if (!ventanaAbierta) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: 'No se pudo abrir ventana. Verifica los bloqueadores de popup.'
+      });
+      return;
+    }
+
+    // Obtener estilos
+    const archivos = this.fileTree.obtenerTodosLosArchivos(this.arbol);
+    const stylesFiles = archivos.filter(a => a.nombre.endsWith('.styles') && a.contenido);
+    const stylesCss = stylesFiles.map(s => s.contenido).join('\n');
+
+    // Generar HTML con los estilos
+    const htmlCompleto = `<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Página YFERA Compilada</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  <style>
+    body {
+      background: #f5f5f5;
+      color: #333;
+    }
+    ${stylesCss}
+  </style>
+</head>
+<body>
+  ${this.compiler.htmlCompilado || '<p>No hay contenido compilado</p>'}
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"><\/script>
+</body>
+</html>`;
+
+    ventanaAbierta.document.write(htmlCompleto);
+    ventanaAbierta.document.close();
+
+    // Opción de descargar
+    Swal.fire({
+      icon: 'success',
+      title: 'Página generada',
+      html: `
+        <p>La página se ha compilado exitosamente.</p>
+        <p>¿Deseas descargar el archivo HTML?</p>
+      `,
+      showCancelButton: true,
+      confirmButtonText: 'Descargar',
+      cancelButtonText: 'Cerrar',
+      confirmButtonColor: '#a6e3a1'
+    }).then(result => {
+      if (result.isConfirmed) {
+        const blob = new Blob([htmlCompleto], { type: 'text/html' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'pagina-compilada.html';
+        a.click();
+        URL.revokeObjectURL(a.href);
+      }
+    });
   }
 
   verBaseDeDatos() {
     this.dbViewer.verBaseDeDatos();
   }
-
 
 }

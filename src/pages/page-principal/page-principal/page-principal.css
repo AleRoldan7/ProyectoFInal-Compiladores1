@@ -64,23 +64,33 @@
   padding: 6px 10px;
   border-radius: 6px;
   cursor: pointer;
-  transition: 0.2s;
+  transition: all 0.2s ease;
+  font-weight: 500;
 }
 
 .tool-btn:hover {
   background: #1e1e2e;
+  transform: scale(1.05);
 }
 
 .tool-btn .material-icons {
-  font-size: 18px;
+  font-size: 20px;
+  font-weight: bold;
+  transition: all 0.2s ease;
+}
+
+.tool-btn:hover .material-icons {
+  font-size: 22px;
 }
 
 .tool-btn.run {
   color: #a6e3a1;
+  font-weight: 600;
 }
 
 .tool-btn.run:hover {
-  background: #a6e3a115;
+  background: #a6e3a120;
+  box-shadow: 0 0 10px #a6e3a130;
 }
 
 .tool-sep {
@@ -398,4 +408,328 @@
 
 .terminal-input-row {
   flex-shrink: 0;
+}
+
+/* ───────────── TABLA DE ERRORES MEJORADA ───────────── */
+.errors-container {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.errors-header {
+  background: linear-gradient(135deg, #f38ba8 0%, #e63946 100%);
+  color: #fff;
+  padding: 12px 16px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 2px solid #d62828;
+  flex-shrink: 0;
+}
+
+.errors-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.error-icon {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.errors-wrapper {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: auto;
+  background: #1e1e2e;
+}
+
+.error-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  background: #1e1e2e;
+}
+
+.error-table thead {
+  position: sticky;
+  top: 0;
+  background: #313244;
+  color: #cdd6f4;
+  font-weight: 600;
+  z-index: 10;
+}
+
+.error-table thead th {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 2px solid #45475a;
+  color: #89b4fa;
+}
+
+.col-num { width: 40px; text-align: center; }
+.col-tipo { width: 100px; }
+.col-linea { width: 70px; text-align: center; }
+.col-columna { width: 70px; text-align: center; }
+.col-lexema { width: 120px; }
+.col-desc { flex: 1; }
+
+.error-table tbody tr {
+  border-bottom: 1px solid #313244;
+  transition: background-color 0.15s ease;
+}
+
+.error-table tbody tr:hover {
+  background: #2d2d40;
+}
+
+/* Filas por tipo de error */
+.error-row.row-lexico { border-left: 4px solid #f9e2af; }
+.error-row.row-sintactico { border-left: 4px solid #89dceb; }
+.error-row.row-semantico { border-left: 4px solid #f38ba8; }
+
+.error-table tbody td {
+  padding: 10px 12px;
+  vertical-align: middle;
+}
+
+.cell-num {
+  text-align: center;
+  color: #6c7086;
+  font-weight: 600;
+}
+
+.cell-tipo {
+  text-align: center;
+}
+
+.cell-linea, .cell-columna {
+  text-align: center;
+  color: #94e2d5;
+  font-weight: 500;
+}
+
+.cell-lexema code {
+  background: #313244;
+  color: #cba6f7;
+  padding: 3px 6px;
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+}
+
+.cell-desc {
+  color: #cdd6f4;
+  word-break: break-word;
+  max-width: 400px;
+}
+
+/* Badges de tipo error */
+.err-badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.badge-lexico {
+  background: #f9e2af20;
+  color: #f9e2af;
+  border: 1px solid #f9e2af40;
+}
+
+.badge-sintactico {
+  background: #89dceb20;
+  color: #89dceb;
+  border: 1px solid #89dceb40;
+}
+
+.badge-semantico {
+  background: #f38ba820;
+  color: #f38ba8;
+  border: 1px solid #f38ba840;
+}
+
+/* Mensaje sin errores */
+.no-errors-msg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px 20px;
+  color: #a6e3a1;
+  font-size: 14px;
+  text-align: center;
+  flex: 1;
+}
+
+.success-icon {
+  font-size: 24px;
+  font-weight: bold;
+}
+
+/* ───────────── BOTONES DE ACCIONES MEJORADOS ───────────── */
+.icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: #cdd6f4;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 16px;
+}
+
+.icon-btn:hover {
+  background: #313244;
+  color: #89b4fa;
+  transform: scale(1.1);
+}
+
+.icon-btn .material-icons {
+  font-size: 18px;
+  transition: all 0.2s ease;
+}
+
+/* EDITOR ACTION BUTTONS */
+.editor-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid #313244;
+  color: #cdd6f4;
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-right: 4px;
+}
+
+.editor-action-btn:hover {
+  background: #313244;
+  border-color: #45475a;
+  color: #89b4fa;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.editor-action-btn .material-icons {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+/* ROW BUTTONS (delete, create files, etc) */
+.row-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: #6c7086;
+  padding: 4px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 14px;
+}
+
+.row-btn:hover {
+  background: #313244;
+  color: #cdd6f4;
+  transform: scale(1.15);
+}
+
+.row-btn.delete {
+  color: #f38ba8;
+}
+
+.row-btn.delete:hover {
+  background: #f38ba820;
+  color: #f38ba8;
+  box-shadow: 0 0 8px #f38ba830;
+}
+
+.row-btn .material-icons {
+  font-size: 16px;
+  font-weight: bold;
+}
+
+/* TAB CLOSE BUTTON */
+.tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: #6c7086;
+  padding: 2px 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  opacity: 0.6;
+}
+
+.tab-close:hover {
+  color: #f38ba8;
+  opacity: 1;
+  transform: rotate(90deg);
+}
+
+.tab-close .material-icons {
+  font-size: 16px;
+}
+
+/* IMPORT CLOSE BUTTON */
+.import-close-btn {
+  background: transparent;
+  border: none;
+  color: #cdd6f4;
+  cursor: pointer;
+  font-size: 18px;
+  padding: 0;
+  transition: all 0.2s ease;
+  font-weight: bold;
+}
+
+.import-close-btn:hover {
+  color: #f38ba8;
+  transform: scale(1.2);
+}
+
+/* TERMINAL RUN BUTTON */
+.terminal-run-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #a6e3a120;
+  border: 1px solid #a6e3a140;
+  color: #a6e3a1;
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 500;
+}
+
+.terminal-run-btn:hover {
+  background: #a6e3a130;
+  border-color: #a6e3a1;
+  box-shadow: 0 0 10px #a6e3a140;
+  transform: translateY(-2px);
+}
+
+.terminal-run-btn .material-icons {
+  font-size: 18px;
+  font-weight: bold;
 }

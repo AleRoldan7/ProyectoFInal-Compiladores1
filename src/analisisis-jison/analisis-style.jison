@@ -372,12 +372,10 @@ clase_for
     ;
 
 nombre_for
-    : IDENTIFICADOR CONTADOR  
-    { 
-        $$ = $1 + '-' + $2.substring(1); 
-    }
-    | IDENTIFICADOR           
-    { 
-        $$ = $1; 
-    }
+    : IDENTIFICADOR MENOS CONTADOR  
+      { $$ = $1 + '-' + $3.substring(1); }
+    | IDENTIFICADOR CONTADOR
+      { $$ = $1 + $2.substring(1); }
+    | IDENTIFICADOR
+      { $$ = $1; }
     ;
