@@ -17,21 +17,26 @@ export class RenderService {
   private renderComp!: RenderizadorComponentes;
   private ejecutor!:   Principal;
 
+  // Callback registrado desde CodigoCompiladoService para manejar load "archivo.y"
+  private onLoad: ((destino: string, esArchivo: boolean) => string) | null = null;
+
   constructor(private sqlite: SqliteService) {}
 
-  // ─── Método que pide CodigoCompiladoService ───────────────────────────
-  // No hace falta guardarlo: RenderizadorComponentes ya resuelve
-  // contenido internamente. Lo dejamos vacío para no romper la llamada.
   setResolverContenido(_fn: (c: any) => string): void {
-    // La resolución de contenido ya está dentro de RenderizadorComponentes.
-    // Este método existe solo para mantener compatibilidad con CodigoCompiladoService.
+    // La resolución ya está dentro de RenderizadorComponentes.
+    // Mantenido por compatibilidad con CodigoCompiladoService.
   }
 
-  // ─── Render principal ─────────────────────────────────────────────────
+  // ─── Registrar el handler de load desde CodigoCompiladoService ───────────
+  setOnLoad(fn: (destino: string, esArchivo: boolean) => string): void {
+    this.onLoad = fn;
+  }
+
+  // ─── Render principal ─────────────────────────────────────────────────────
   render(asts: any[]): string {
     this.reiniciar();
 
-    // 1. Ejecutar sentencias DBA primero (llenan la tabla de símbolos)
+    // 1. Ejecutar sentencias DBA (llenan la tabla de símbolos con SELECTs)
     for (const ast of asts) {
       if (Array.isArray(ast)) {
         this.ejecutarDBA(ast);
@@ -44,7 +49,7 @@ export class RenderService {
       for (const nodo of ast) {
         if (nodo && (nodo.tipo === 'clase' || nodo.tipo === 'for')) {
           this.estilos.procesarAST(ast);
-          break; // procesarAST ya recorre todo el array, no repetir
+          break;
         }
       }
     }
@@ -59,19 +64,21 @@ export class RenderService {
       }
     }
 
-    // 4. Construir renderizadores con todo ya cargado
+    // 4. Construir renderizadores con todo cargado
     this.renderComp = new RenderizadorComponentes(
       this.tabla, this.evaluador, this.estilos, this.componentes
     );
-    this.ejecutor = new Principal(
-      this.tabla, this.evaluador, this.renderComp
-    );
+    this.ejecutor = new Principal(this.tabla, this.evaluador, this.renderComp);
 
-    // 5. Ejecutar el programa principal (.y → nodo tipo 'programa')
+    // 5. Conectar SqliteService y el handler de load al Principal
+    this.ejecutor.setSqlite(this.sqlite);
+    if (this.onLoad) {
+      this.ejecutor.setOnLoad(this.onLoad);
+    }
+
+    // 6. Ejecutar el programa principal (.y → nodo tipo 'programa')
     let html = '';
     for (const ast of asts) {
-      // El parser del .y devuelve un objeto con tipo:'programa',
-      // pero también puede devolver un array con un nodo 'programa' adentro
       if (ast && ast.tipo === 'programa') {
         html += this.ejecutor.ejecutar(ast);
         continue;
@@ -89,37 +96,29 @@ export class RenderService {
     return '<style>' + css + '</style>' + html;
   }
 
-  // ─── Ejecutar sentencias DBA ──────────────────────────────────────────
+  // ─── Ejecutar sentencias DBA del archivo .dba ─────────────────────────────
   private ejecutarDBA(sentencias: any[]): void {
     for (const sentencia of sentencias) {
       if (!sentencia || !sentencia.tipo) continue;
-
       try {
         const sql = this.sqlite.nodoASQL(sentencia);
         if (!sql) continue;
 
         if (sentencia.tipo === 'select') {
           const resultado = this.sqlite.ejecutarSQL(sql);
-          // La clave en tabla de símbolos es tabla_columna
-          const clave = sentencia.tabla + '_' + sentencia.columna;
-          this.tabla.set(
-            clave,
-            'array',
-            resultado.map((r: any) => r[sentencia.columna])
-          );
+          const clave     = sentencia.tabla + '_' + sentencia.columna;
+          this.tabla.set(clave, 'array', resultado.map((r: any) => r[sentencia.columna]));
           console.log('[DBA] SELECT ' + clave + ':', resultado);
         } else {
           this.sqlite.ejecutarSQL(sql);
           console.log('[DBA] ' + sentencia.tipo.toUpperCase() + ' ejecutado');
         }
-
       } catch (e: any) {
         console.error('[DBA] Error:', e.message, sentencia);
       }
     }
   }
 
-  // ─── Limpiar estado entre ejecuciones ────────────────────────────────
   private reiniciar(): void {
     this.tabla.limpiar();
     this.estilos.limpiar();

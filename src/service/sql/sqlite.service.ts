@@ -5,9 +5,9 @@ declare var initSqlJs: any;
 @Injectable({ providedIn: 'root' })
 export class SqliteService {
 
-  private db:           any     = null;
-  private dbReady:      boolean = false;
-  private initPromise:  Promise<void> | null = null;
+  private db: any = null;
+  private dbReady: boolean = false;
+  private initPromise: Promise<void> | null = null;
 
 
   init(): Promise<void> {
@@ -18,9 +18,9 @@ export class SqliteService {
       locateFile: (file: string) =>
         `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/${file}`
     }).then((SQL: any) => {
-      this.db      = new SQL.Database();
+      this.db = new SQL.Database();
       this.dbReady = true;
-      console.log('[SQLite] Inicializado correctamente');
+      console.log('SQLite iniciado correctamente');
     });
 
     return this.initPromise!;
@@ -37,35 +37,85 @@ export class SqliteService {
         `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/${file}`
     });
     if (this.db) this.db.close();
-    this.db      = new SQL.Database();
+    this.db = new SQL.Database();
     this.dbReady = true;
     console.log('[SQLite] Base de datos reiniciada');
   }
 
 
   ejecutarSQL(sql: string): any[] {
-    if (!this.db) throw new Error('SQLite no inicializado. Llama a init() primero.');
-    console.log('[SQLite]', sql);
+
+    if (!this.db) {
+      throw new Error('SQLite no iniciado');
+    }
+
+    console.log('\n===================================');
+    console.log('[SQLite] EJECUTANDO SQL');
+    console.log(sql);
+    console.log('===================================\n');
+
     const resultados: any[] = [];
+
     try {
+
       const stmts = this.db.exec(sql);
+
       for (const stmt of stmts) {
+
         const cols = stmt.columns as string[];
+
         const rows = stmt.values.map((row: any[]) => {
+
           const obj: Record<string, any> = {};
-          cols.forEach((c, i) => obj[c] = row[i]);
+
+          cols.forEach((c, i) => {
+            obj[c] = row[i];
+          });
+
           return obj;
         });
+
         resultados.push(...rows);
       }
+
+      /* ─── LOG RESULTADOS SELECT ───────────────── */
+
+      if (resultados.length) {
+
+        console.log('[SQLite] RESULTADOS:');
+
+        console.table(resultados);
+
+      }
+
+      /* ─── LOG TABLAS AFECTADAS ────────────────── */
+
+      const match =
+        sql.match(/FROM\s+([a-zA-Z_][a-zA-Z0-9_]*)/i) ||
+        sql.match(/INTO\s+([a-zA-Z_][a-zA-Z0-9_]*)/i) ||
+        sql.match(/UPDATE\s+([a-zA-Z_][a-zA-Z0-9_]*)/i) ||
+        sql.match(/TABLE\s+(?:IF NOT EXISTS\s+)?([a-zA-Z_][a-zA-Z0-9_]*)/i);
+
+      if (match) {
+
+        const tabla = match[1];
+
+        this.logTabla(tabla);
+
+      }
+
     } catch (e: any) {
-      console.error('[SQLite] Error:', e.message);
+
+      console.error('\n[SQLite] ERROR SQL');
+      console.error(e.message);
+      console.error('SQL:', sql);
+
       throw e;
     }
+
     return resultados;
   }
 
-  
   nodoASQL(nodo: any): string {
     if (!nodo?.tipo) return '';
 
@@ -76,11 +126,13 @@ export class SqliteService {
           .map((c: any) => `${c.nombre} ${this.tipoASQL(c.tipo)}`)
           .join(', ');
         return `CREATE TABLE IF NOT EXISTS ${nodo.tabla} ` +
-               `(id INTEGER PRIMARY KEY AUTOINCREMENT, ${cols});`;
+          `(id INTEGER PRIMARY KEY AUTOINCREMENT, ${cols});`;
       }
 
       case 'select':
+        console.log()
         return `SELECT ${nodo.columna} FROM ${nodo.tabla};`;
+
 
       case 'insert': {
         const cols = (nodo.valores || []).map((v: any) => v.col).join(', ');
@@ -131,6 +183,37 @@ export class SqliteService {
     } catch { return { columnas: [], filas: [] }; }
   }
 
+  private logTabla(nombre: string): void {
+
+    try {
+
+      const data = this.verTabla(nombre);
+
+      console.log(`\n==============================`);
+      console.log(`[SQLite] TABLA: ${nombre}`);
+      console.log(`COLUMNAS:`, data.columnas);
+
+      if (!data.filas.length) {
+        console.log(`[SQLite] Tabla vacía`);
+      } else {
+        console.table(
+          data.filas.map(fila => {
+            const obj: any = {};
+            data.columnas.forEach((col, i) => {
+              obj[col] = fila[i];
+            });
+            return obj;
+          })
+        );
+      }
+
+      console.log(`==============================\n`);
+
+    } catch (e) {
+      console.error('[SQLite] Error mostrando tabla:', nombre, e);
+    }
+  }
+
   verSchema(nombre: string): any[] {
     try {
       return this.ejecutarSQL(`PRAGMA table_info(${nombre});`);
@@ -144,11 +227,11 @@ export class SqliteService {
   }
 
   descargarDB(nombre = 'yfera-db') {
-    const data   = this.exportarDB();
-    const blob   = new Blob([data.slice().buffer], { type: 'application/octet-stream' });
-    const a      = document.createElement('a');
-    a.href       = URL.createObjectURL(blob);
-    a.download   = `${nombre}.db`;
+    const data = this.exportarDB();
+    const blob = new Blob([data.slice().buffer], { type: 'application/octet-stream' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${nombre}.db`;
     a.click();
     URL.revokeObjectURL(a.href);
   }

@@ -2,7 +2,7 @@
 %%
 
 \s+                             /* ignorar */
-"/*"[\s\S]*?"*/"                    /* comentario bloque */
+"/*"[\s\S]*?"*/"                /* comentario bloque */
 
 /* PALABRAS RESERVADAS — las de varias palabras PRIMERO */
 "background color"              return 'BACKGROUND_COLOR';
@@ -81,13 +81,8 @@
 [a-zA-Z][a-zA-Z0-9_\-]*        return 'IDENTIFICADOR';
 
 <<EOF>>                         return 'EOF';
-.   { 
-        yy.manejador.errorLexico
-        (
-                yytext, 
-                yylloc.first_line, 
-                yylloc.first_column + 1
-        ); 
+.   {
+        yy.manejador.errorLexico(yytext, yylloc.first_line, yylloc.first_column + 1);
     }
 
 /lex
@@ -100,20 +95,38 @@
 %%
 
 inicio
-    : lista_estilos EOF   
-    { 
-        return $1; 
+    : lista_estilos EOF
+    {
+        return {
+            ast:     $1,
+            tokens:  yy.manejador.getTokens(),
+            errores: yy.manejador.getErrores()
+        };
+    }
+
+    /* Error estructural general */
+    | error EOF
+    {
+        yy.manejador.errorSintactico(
+            yytext, @1.first_line, @1.first_column + 1,
+            'Error estructural: no se pudo reconocer ningún estilo válido'
+        );
+        return {
+            ast:     [],
+            tokens:  yy.manejador.getTokens(),
+            errores: yy.manejador.getErrores()
+        };
     }
     ;
 
 lista_estilos
-    : lista_estilos estilo_o_for  
-    { 
-        $$ = $1; $$.push($2); 
+    : lista_estilos estilo_o_for
+    {
+        $$ = $1; $$.push($2);
     }
-    | estilo_o_for                
-    { 
-        $$ = [$1]; 
+    | estilo_o_for
+    {
+        $$ = [$1];
     }
     ;
 
@@ -122,56 +135,86 @@ estilo_o_for
     | bucle_for
     ;
 
+/* ─── DEFINICIÓN DE CLASE ──────────────────────────────────────── */
+
 definicion_clase
     : IDENTIFICADOR LLAVE_A lista_declaraciones LLAVE_C
-        { 
-            $$ = { 
-                    tipo:'clase', 
-                    nombre:$1, 
-                    propiedades:$3, 
-                    extiende:null 
-                }; 
+        {
+            $$ = { tipo:'clase', nombre:$1, propiedades:$3, extiende:null };
         }
     | IDENTIFICADOR EXTENDS IDENTIFICADOR LLAVE_A lista_declaraciones LLAVE_C
-        { 
-            $$ = { 
-                    tipo:'clase', 
-                    nombre:$1, 
-                    propiedades:$5, 
-                    extiende:$3 
-                }; 
+        {
+            $$ = { tipo:'clase', nombre:$1, propiedades:$5, extiende:$3 };
         }
+
+    /* Error: clase sin '{' para abrir el bloque */
+    | IDENTIFICADOR error lista_declaraciones LLAVE_C
+    {
+        yy.manejador.errorEstiloSinLlave($1, @2.first_line, @2.first_column + 1);
+        $$ = { tipo:'clase', nombre:$1, propiedades:$3, extiende:null };
+    }
+
+    /* Error: extends sin nombre del padre */
+    | IDENTIFICADOR EXTENDS error LLAVE_A lista_declaraciones LLAVE_C
+    {
+        yy.manejador.errorExtendsSinNombre(@3.first_line, @3.first_column + 1);
+        $$ = { tipo:'clase', nombre:$1, propiedades:$5, extiende:null };
+    }
+
+    /* Error: clase sin '}' de cierre */
+    | IDENTIFICADOR LLAVE_A lista_declaraciones error
+    {
+        yy.manejador.errorLlaveNoTerminada(@4.first_line, @4.first_column + 1);
+        $$ = { tipo:'clase', nombre:$1, propiedades:$3, extiende:null };
+    }
     ;
 
+/* ─── DECLARACIONES DE PROPIEDADES ────────────────────────────── */
+
 lista_declaraciones
-    : lista_declaraciones declaracion  
-    { 
-        $$ = $1; $$.push($2); 
+    : lista_declaraciones declaracion
+    {
+        $$ = $1; $$.push($2);
     }
-    | /* vacío */                      
-    { 
-        $$ = []; 
+    | /* vacío */
+    {
+        $$ = [];
     }
     ;
 
 declaracion
     : propiedad IGUAL valor PUNTO_COMA
-        { 
-            $$ = { 
-                    propiedad:$1, 
-                    valor:$3, 
-                    linea:@1.first_line 
-                }; 
+        {
+            $$ = { propiedad:$1, valor:$3, linea:@1.first_line };
         }
     | propiedad IGUAL valor_borde PUNTO_COMA
-        { 
-            $$ = { 
-                    propiedad:$1, 
-                    valor:$3, 
-                    linea:@1.first_line 
-                }; 
+        {
+            $$ = { propiedad:$1, valor:$3, linea:@1.first_line };
         }
+
+    /* Error: propiedad sin '=' */
+    | propiedad error valor PUNTO_COMA
+    {
+        yy.manejador.errorAsignacionSinIgual($1, @2.first_line, @2.first_column + 1);
+        $$ = { propiedad:$1, valor:$3, linea:@1.first_line };
+    }
+
+    /* Error: declaración sin ';' */
+    | propiedad IGUAL valor error
+    {
+        yy.manejador.errorPuntoComa(@4.first_line, @4.first_column + 1);
+        $$ = { propiedad:$1, valor:$3, linea:@1.first_line };
+    }
+
+    /* Error: propiedad desconocida — recuperar hasta ';' */
+    | error PUNTO_COMA
+    {
+        yy.manejador.errorPropiedadDesconocida(yytext, @1.first_line, @1.first_column + 1);
+        $$ = null;
+    }
     ;
+
+/* ─── PROPIEDADES ──────────────────────────────────────────────── */
 
 propiedad
     : HEIGHT            { $$ = 'height'; }
@@ -210,6 +253,8 @@ propiedad
     | BORDER_RIGHT_STYLE{ $$ = 'border-right-style'; }
     ;
 
+/* ─── VALORES ──────────────────────────────────────────────────── */
+
 valor
     : expresion           { $$ = $1; }
     | COLOR_VALUE         { $$ = $1; }
@@ -222,13 +267,8 @@ valor
 
 valor_borde
     : expresion estilo_borde_simple color_val
-        { 
-            $$ = { 
-                    tipo:'borde', 
-                    ancho:$1, 
-                    estilo:$2, 
-                    color:$3 
-                }; 
+        {
+            $$ = { tipo:'borde', ancho:$1, estilo:$2, color:$3 };
         }
     ;
 
@@ -259,120 +299,105 @@ fuente
     | CURSIVE       { $$ = 'cursive'; }
     ;
 
+/* ─── EXPRESIONES ──────────────────────────────────────────────── */
+
 expresion
-    : expresion MAS expresion    
-    { 
-        $$ = { 
-                op:'+', 
-                izq:$1, 
-                der:$3 
-            }; 
+    : expresion MAS expresion
+    {
+        $$ = { op:'+', izq:$1, der:$3 };
     }
-    | expresion MENOS expresion  
-    { 
-        $$ = { 
-                op:'-', 
-                izq:$1, 
-                der:$3 
-            }; 
+    | expresion MENOS expresion
+    {
+        $$ = { op:'-', izq:$1, der:$3 };
     }
-    | expresion MULT expresion   
-    { 
-        $$ = { 
-                op:'*', 
-                izq:$1, 
-                der:$3 
-            };
+    | expresion MULT expresion
+    {
+        $$ = { op:'*', izq:$1, der:$3 };
     }
-    | expresion DIV expresion    
-    { 
-        $$ = { 
-                op:'/', 
-                izq:$1, 
-                der:$3 
-            }; 
+    | expresion DIV expresion
+    {
+        $$ = { op:'/', izq:$1, der:$3 };
     }
-    | MENOS expresion %prec UMENOS 
-    { 
-        $$ = { 
-                op:'neg', 
-                val:$2 
-            }; 
+    | MENOS expresion %prec UMENOS
+    {
+        $$ = { op:'neg', val:$2 };
     }
-    | ENTERO       
-    { 
-        $$ = parseInt($1); 
+    | ENTERO
+    {
+        $$ = parseInt($1);
     }
-    | DECIMAL      
-    { 
-        $$ = parseFloat($1); 
+    | DECIMAL
+    {
+        $$ = parseFloat($1);
     }
-    | PIXEL        
-    { 
-        $$ = $1; 
+    | PIXEL
+    {
+        $$ = $1;
     }
-    | PORCENTAJE   
-    { 
-        $$ = $1; 
+    | PORCENTAJE
+    {
+        $$ = $1;
     }
-    | CONTADOR     
-    { 
-        $$ = { 
-                tipo:'contador', 
-                nombre:$1.substring(1) 
-            }; 
+    | CONTADOR
+    {
+        $$ = { tipo:'contador', nombre:$1.substring(1) };
     }
     ;
+
+/* ─── BUCLE @for ───────────────────────────────────────────────── */
 
 bucle_for
     : FOR CONTADOR FROM expresion THROUGH expresion LLAVE_A cuerpo_for LLAVE_C
-    { 
-        $$ = { 
-                tipo:'for', 
-                var:$2.substring(1), 
-                inicio:$4, 
-                fin:$6, 
-                inclusivo:true, 
-                cuerpo:$8 
-            }; 
-    }
-    | FOR CONTADOR FROM expresion TO expresion LLAVE_A cuerpo_for LLAVE_C
-        { 
-            $$ = { 
-                    tipo:'for', 
-                    var:$2.substring(1), 
-                    inicio:$4, 
-                    fin:$6, 
-                    inclusivo:false, 
-                    cuerpo:$8 
-                }; 
+        {
+            $$ = { tipo:'for', var:$2.substring(1), inicio:$4, fin:$6, inclusivo:true, cuerpo:$8 };
         }
+    | FOR CONTADOR FROM expresion TO expresion LLAVE_A cuerpo_for LLAVE_C
+        {
+            $$ = { tipo:'for', var:$2.substring(1), inicio:$4, fin:$6, inclusivo:false, cuerpo:$8 };
+        }
+
+    /* Error: @for con sintaxis incorrecta */
+    | FOR error LLAVE_A cuerpo_for LLAVE_C
+    {
+        yy.manejador.errorForStyleSintaxis(@2.first_line, @2.first_column + 1);
+        $$ = { tipo:'for', var:'i', inicio:0, fin:0, inclusivo:false, cuerpo:$4 };
+    }
+
+    /* Error: @for sin '{' */
+    | FOR CONTADOR FROM expresion THROUGH expresion error cuerpo_for LLAVE_C
+    {
+        yy.manejador.errorLlaveNoTerminada(@7.first_line, @7.first_column + 1);
+        $$ = { tipo:'for', var:$2.substring(1), inicio:$4, fin:$6, inclusivo:true, cuerpo:$8 };
+    }
     ;
 
 cuerpo_for
-    : cuerpo_for clase_for  
-    { 
+    : cuerpo_for clase_for
+    {
         $$ = $1; $$.push($2);
     }
-    | clase_for             
-    { 
-        $$ = [$1]; 
+    | clase_for
+    {
+        $$ = [$1];
     }
     ;
 
 clase_for
     : nombre_for LLAVE_A lista_declaraciones LLAVE_C
-        { 
-            $$ = { 
-                    tipo:'clase_for', 
-                    nombre:$1, 
-                    propiedades:$3 
-                }; 
+        {
+            $$ = { tipo:'clase_for', nombre:$1, propiedades:$3 };
         }
+
+    /* Error: clase dentro de @for sin '{' */
+    | nombre_for error lista_declaraciones LLAVE_C
+    {
+        yy.manejador.errorEstiloSinLlave($1, @2.first_line, @2.first_column + 1);
+        $$ = { tipo:'clase_for', nombre:$1, propiedades:$3 };
+    }
     ;
 
 nombre_for
-    : IDENTIFICADOR MENOS CONTADOR  
+    : IDENTIFICADOR MENOS CONTADOR
       { $$ = $1 + '-' + $3.substring(1); }
     | IDENTIFICADOR CONTADOR
       { $$ = $1 + $2.substring(1); }

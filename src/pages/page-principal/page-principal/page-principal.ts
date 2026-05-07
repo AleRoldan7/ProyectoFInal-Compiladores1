@@ -36,6 +36,7 @@ export class PagePrincipal {
   @ViewChild('textarea') editorRef!: ElementRef<HTMLTextAreaElement>;
   @ViewChild('colorInput') colorInput!: ElementRef<HTMLInputElement>;
   @ViewChild('terminalBody') terminalBody!: ElementRef<HTMLDivElement>;
+  @ViewChild('lineNums') lineNums!: ElementRef<HTMLDivElement>;
 
   arbol: NodoArchivo[] = [
     {
@@ -148,8 +149,8 @@ export class PagePrincipal {
 
   switchTab(nodo: NodoArchivo) {
     this.editor.switchTab(nodo, this.arbol);
-    this.cdr.detectChanges();   
-    
+    this.cdr.detectChanges();
+
   }
 
   cerrarTab(e: Event, nodo: NodoArchivo) {
@@ -165,9 +166,19 @@ export class PagePrincipal {
     this.editor.handleKeydown(e, this.arbol);
   }
 
-  syncScroll(textarea: HTMLTextAreaElement, highlight: HTMLElement) {
-    highlight.scrollTop = textarea.scrollTop;
-    highlight.scrollLeft = textarea.scrollLeft;
+  syncScroll(
+    editor: HTMLTextAreaElement,
+    lineNums: HTMLElement,
+    highlight: HTMLElement
+  ) {
+    const scrollTop = editor.scrollTop;
+
+    // Sincronización directa (más estable que translateY)
+    if (lineNums) lineNums.scrollTop = scrollTop;
+    if (highlight) {
+      highlight.scrollTop = scrollTop;
+      highlight.scrollLeft = editor.scrollLeft;
+    }
   }
 
   updatePos(ed: HTMLTextAreaElement) {

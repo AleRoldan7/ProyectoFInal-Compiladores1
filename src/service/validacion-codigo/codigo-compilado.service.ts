@@ -1,16 +1,16 @@
 import { Injectable } from '@angular/core';
 
-import * as parserStyle from '../../analisisis-jison/analizador-style.js';
+import * as parserStyle     from '../../analisisis-jison/analizador-style.js';
 import * as parserComponent from '../../analisisis-jison/analizador-component.js';
 import * as parserPrincipal from '../../analisisis-jison/analizador-lenguaje-principal.js';
-import * as parserDBA from '../../analisisis-jison/analizador-dba.js';
+import * as parserDBA       from '../../analisisis-jison/analizador-dba.js';
 
-import { NodoArchivo } from '../../models/nodo-archivo.js';
-import { ErrorReporte } from '../../pages/page-principal/page-principal/page-principal.js';
+import { NodoArchivo }   from '../../models/nodo-archivo.js';
+import { ErrorReporte }  from '../../pages/page-principal/page-principal/page-principal.js';
 import { RenderService } from '../renderizado/render.service.js';
 import { SqliteService } from '../sql/sqlite.service.js';
 import { ManejoErrores } from '../../clases/manejo-errores/errores.js';
-import Swal from 'sweetalert2';
+import Swal              from 'sweetalert2';
 import { CodigoService } from '../tabulacion-color/codigo.service.js';
 
 export interface ResultadoCompilacion {
@@ -20,22 +20,23 @@ export interface ResultadoCompilacion {
   consolaMode: 'console' | 'errors';
 }
 
-@Injectable({
-  providedIn: 'root',
-})
+@Injectable({ providedIn: 'root' })
 export class CodigoCompiladoService {
 
   errores: ErrorReporte[] = [];
   consolaLines: string[] = [
-    '<span style="color:#45475a;">// Salida del compilador aparecerá aquí...</span>'
+    '<span style="color:#45475a;">Cuando se ejecute aparece aca</span>'
   ];
   htmlCompilado: string = '';
+
+  // Guardamos el árbol de archivos para poder reutilizarlo en load
+  private arbolActual: NodoArchivo[] = [];
 
   constructor(
     private render: RenderService,
     private sqlite: SqliteService,
     private highlighter: CodigoService
-  ) { }
+  ) {}
 
   getParser(nombre: string): any {
     if (nombre.endsWith('.styles')) return parserStyle;
@@ -45,168 +46,159 @@ export class CodigoCompiladoService {
     return null;
   }
 
-  // ─── Limpia el mensaje de error SIN regex ────────────────────────────────
+  // ─── Mapeo tokens → símbolos legibles ────────────────────────────────────
+  private mapeoTokenos: Record<string, string> = {
+    'LLAVE_A': '{', 'LLAVE_C': '}',
+    'PAREN_A': '(', 'PAREN_C': ')',
+    'CORCH_A': '[', 'CORCH_C': ']',
+    'TABLA_A': '[', 'TABLA_C': ']',
+    'PUNTO_COMA': ';', 'COMA': ',', 'DOS_PUNTOS': ':',
+    'PUNTO': '.', 'ARROBA': '@',
+    'MAS': '+', 'MENOS': '-', 'MULT': '*', 'DIV': '/', 'MOD': '%',
+    'IGUAL': '=', 'EQ': '==', 'NEQ': '!=',
+    'GT': '>', 'LT': '<', 'GTE': '>=', 'LTE': '<=',
+    'AND': '&&', 'OR': '||', 'NOT': '!', 'INCREMENT': '++',
+    'IF': 'if', 'ELSE': 'else', 'ELSE_IF': 'else if',
+    'WHILE': 'while', 'FOR': 'for', 'FOR_EACH': 'for each',
+    'DO': 'do', 'FUNCTION': 'function', 'MAIN': 'main',
+    'SWITCH': 'switch', 'CASE': 'case', 'DEFAULT': 'default',
+    'BREAK': 'break', 'CONTINUE': 'continue', 'RETURN': 'return',
+    'T_INT': 'int', 'T_FLOAT': 'float', 'T_STRING': 'string',
+    'T_BOOL': 'boolean', 'T_CHAR': 'char',
+    'IMPORT': 'import', 'EXECUTE': 'execute', 'LOAD': 'load'
+  };
+
+  private traducirTokens(texto: string): string {
+    let resultado = texto;
+    for (const [token, simbolo] of Object.entries(this.mapeoTokenos)) {
+      resultado = resultado.replace(new RegExp(`'${token}'`, 'g'), `'${simbolo}'`);
+      resultado = resultado.replace(new RegExp(`got\\s+'${token}'`, 'g'), `got '${simbolo}'`);
+      resultado = resultado.replace(new RegExp(`${token},`, 'g'), `${simbolo},`);
+      resultado = resultado.replace(new RegExp(`${token}$`, 'g'), simbolo);
+      resultado = resultado.replace(new RegExp(`\\s${token}\\s`, 'g'), ` ${simbolo} `);
+    }
+    return resultado;
+  }
+
   private limpiarMensajeError(mensaje: string): string {
-    // 1. Quitar todo lo que esté antes y en la misma línea de "Parse error on line"
     const marcaParseError = 'Parse error on line ';
     const idxParse = mensaje.indexOf(marcaParseError);
     if (idxParse !== -1) {
-      // Avanzar hasta el siguiente salto de línea para descartar esa línea
       const idxSalto = mensaje.indexOf('\n', idxParse);
       mensaje = idxSalto !== -1 ? mensaje.substring(idxSalto + 1) : '';
     }
-
-    // 2. Quitar líneas que son solo guiones o circunflejos (ej: "-----^^^^^")
     const lineas = mensaje.split('\n');
     const lineasLimpias: string[] = [];
     for (const linea of lineas) {
       const recortada = linea.trim();
-      if (recortada.length === 0) continue;
-
-      // Detectar si la línea es SOLO guiones/circunflejos (línea de subrayado)
+      if (!recortada) continue;
       let soloMarcadores = true;
       for (let i = 0; i < recortada.length; i++) {
-        const c = recortada[i];
-        if (c !== '-' && c !== '^' && c !== ' ') {
-          soloMarcadores = false;
-          break;
+        if (recortada[i] !== '-' && recortada[i] !== '^' && recortada[i] !== ' ') {
+          soloMarcadores = false; break;
         }
       }
       if (soloMarcadores) continue;
-
       lineasLimpias.push(recortada);
     }
-
-    const resultado = lineasLimpias.join(' ').trim();
-
-    // 3. Extraer desde "Expecting" hasta el primer punto o coma SIN regex
+    let resultado = lineasLimpias.join(' ').trim();
     const marcaExpecting = 'Expecting';
     const idxExpecting = resultado.indexOf(marcaExpecting);
     if (idxExpecting !== -1) {
       const desde = idxExpecting + marcaExpecting.length;
       let hasta = resultado.length;
       for (let i = desde; i < resultado.length; i++) {
-        if (resultado[i] === ',' || resultado[i] === '.') {
-          hasta = i;
-          break;
-        }
+        if (resultado[i] === ',' || resultado[i] === '.') { hasta = i; break; }
       }
-      return 'Expecting' + resultado.substring(desde, hasta).trim();
+      resultado = 'Expecting' + resultado.substring(desde, hasta).trim();
     }
-
+    resultado = this.traducirTokens(resultado);
     return resultado.length > 0 ? resultado : 'Error sintáctico desconocido';
   }
 
-  // ─── Resuelve el contenido de un nodo texto a string seguro ──────────────
-  // El parser puede devolver: string puro, número, booleano u objeto expresión
   resolverContenidoTexto(contenido: any): string {
-    // Caso 1: ya es string (STRING_LIT ya procesado por la gramática)
-    if (typeof contenido === 'string') {
-      return contenido;
-    }
-
-    // Caso 2: número o booleano — convertir directo
-    if (typeof contenido === 'number' || typeof contenido === 'boolean') {
-      return String(contenido);
-    }
-
-    // Caso 3: es un nodo de expresión (objeto del AST)
-    if (typeof contenido === 'object' && contenido !== null) {
-      return this.evaluarNodoExpresion(contenido);
-    }
-
+    if (typeof contenido === 'string') return contenido;
+    if (typeof contenido === 'number' || typeof contenido === 'boolean') return String(contenido);
+    if (typeof contenido === 'object' && contenido !== null) return this.evaluarNodoExpresion(contenido);
     return '';
   }
 
-  // ─── Evalúa nodos de expresión del AST a string ──────────────────────────
   private evaluarNodoExpresion(nodo: any): string {
     if (nodo === null || nodo === undefined) return '';
-
-    // Variable: { tipo:'var', nombre:'x' }
-    if (nodo.tipo === 'var') {
-      return '$' + nodo.nombre;
-    }
-
-    // Identificador: { tipo:'ident', nombre:'x' }
-    if (nodo.tipo === 'ident') {
-      return nodo.nombre;
-    }
-
-    // Acceso a array: { tipo:'array_acc', nombre:'arr', indice: expr }
+    if (nodo.tipo === 'var')   return '$' + nodo.nombre;
+    if (nodo.tipo === 'ident') return nodo.nombre;
     if (nodo.tipo === 'array_acc') {
-      const idx = this.evaluarNodoExpresion(nodo.indice);
-      return '$' + nodo.nombre + '[' + idx + ']';
+      return '$' + nodo.nombre + '[' + this.evaluarNodoExpresion(nodo.indice) + ']';
     }
-
-    // Operación binaria: { op: '+', izq: ..., der: ... }
     if (nodo.op !== undefined && nodo.izq !== undefined && nodo.der !== undefined) {
       const izq = this.evaluarNodoExpresion(nodo.izq);
       const der = this.evaluarNodoExpresion(nodo.der);
-
-      // Concatenación: si alguno es string, concatenar como texto
-      if (nodo.op === '+') {
-        return izq + der;
-      }
-      // Operaciones numéricas: intentar evaluar, si no, devolver como texto
-      const numIzq = Number(izq);
-      const numDer = Number(der);
-      if (!isNaN(numIzq) && !isNaN(numDer)) {
-        if (nodo.op === '-') return String(numIzq - numDer);
-        if (nodo.op === '*') return String(numIzq * numDer);
-        if (nodo.op === '/') return numDer !== 0 ? String(numIzq / numDer) : 'DIV/0';
-        if (nodo.op === '%') return String(numIzq % numDer);
+      if (nodo.op === '+') return izq + der;
+      const ni = Number(izq), nd = Number(der);
+      if (!isNaN(ni) && !isNaN(nd)) {
+        if (nodo.op === '-') return String(ni - nd);
+        if (nodo.op === '*') return String(ni * nd);
+        if (nodo.op === '/') return nd !== 0 ? String(ni / nd) : 'DIV/0';
+        if (nodo.op === '%') return String(ni % nd);
       }
       return izq + ' ' + nodo.op + ' ' + der;
     }
-
-    // Negación unaria: { op: 'neg', val: ... }
-    if (nodo.op === 'neg' && nodo.val !== undefined) {
-      return '-' + this.evaluarNodoExpresion(nodo.val);
-    }
-
-    // Primitivos que llegaron como objeto (no debería ocurrir, pero por si acaso)
-    if (typeof nodo === 'string') return nodo;
-    if (typeof nodo === 'number') return String(nodo);
-    if (typeof nodo === 'boolean') return String(nodo);
-
+    if (nodo.op === 'neg') return '-' + this.evaluarNodoExpresion(nodo.val);
     return '';
   }
 
-  // ─── Inicializar parser con manejador de errores ──────────────────────────
   private inicializarParserConManejador(parser: any, manejador: ManejoErrores) {
     parser.parser.yy = { manejador };
-
     const limpiarMensaje = (msg: string) => this.limpiarMensajeError(msg);
     parser.parser.parseError = function(str: any, hash: any) {
-      const line   = (hash && hash.loc && hash.loc.first_line)   || (hash && hash.line)   || 0;
-      const col    = (hash && hash.loc && hash.loc.first_column) || (hash && hash.column) || 0;
-      const token  = (hash && hash.token) || (hash && hash.text) || '';
-      const mensajeLimpio = limpiarMensaje(String(str));
-      manejador.errorSintactico(token, line, col, mensajeLimpio);
+      const line  = (hash?.loc?.first_line)   || hash?.line   || 0;
+      const col   = (hash?.loc?.first_column) || hash?.column || 0;
+      const token = hash?.token || hash?.text || '';
+      manejador.errorSintactico(token, line, col, limpiarMensaje(String(str)));
     };
+  }
+
+  private extraerAST(resultado: any): any {
+    if (resultado && typeof resultado === 'object' && 'ast' in resultado) {
+      return resultado.ast;
+    }
+    return resultado;
+  }
+
+  private extraerErroresParser(resultado: any, nombreArchivo: string): ErrorReporte[] {
+    const errores: ErrorReporte[] = [];
+    if (resultado && typeof resultado === 'object' && Array.isArray(resultado.errores)) {
+      for (const err of resultado.errores) {
+        errores.push({
+          lexema:      err.lexema      ?? err.text        ?? '?',
+          linea:       err.linea       ?? err.line        ?? 0,
+          columna:     err.columna     ?? err.column      ?? 0,
+          tipo:        err.tipo        ?? err.type        ?? 'Sintáctico',
+          descripcion: '[' + nombreArchivo + '] ' + (err.descripcion ?? err.description ?? 'Error desconocido')
+        });
+      }
+    }
+    return errores;
   }
 
   // ─── Ejecución principal ──────────────────────────────────────────────────
   async ejecutar(arbol: NodoArchivo[]): Promise<'console' | 'errors'> {
+    this.arbolActual = arbol;   // guardar para re-uso en load
+
     const manejador = new ManejoErrores();
     manejador.reset();
     this.errores = [];
     const now = new Date().toLocaleTimeString();
     await this.sqlite.init();
 
-    const archivos = this.obtenerTodosLosArchivos(arbol);
+    // Validar imports
+    const archivos  = this.obtenerTodosLosArchivos(arbol);
     const archivosY = archivos.filter(a => a.nombre.endsWith('.y'));
-
-    // Validar imports antes de compilar
     for (const archivoY of archivosY) {
-      const erroresImport = this.highlighter.validarImports(
-        archivoY.contenido || '', arbol
-      );
+      const erroresImport = this.highlighter.validarImports(archivoY.contenido || '', arbol);
       for (const ei of erroresImport) {
         this.errores.push({
-          lexema: ei.ruta,
-          linea: ei.linea,
-          columna: 1,
+          lexema: ei.ruta, linea: ei.linea, columna: 1,
           tipo: 'Semántico',
           descripcion: '[' + archivoY.nombre + '] ' + ei.mensaje
         });
@@ -215,13 +207,13 @@ export class CodigoCompiladoService {
 
     if (this.errores.length > 0) {
       this.consolaLines = [
-        '<span style="color:#f38ba8;">✖ Errores de import encontrados. Corrígelos antes de ejecutar.</span>'
+        '<span style="color:#f38ba8;">Errores de import encontrados. Corrígelos antes de ejecutar.</span>'
       ];
       return 'errors';
     }
 
     try {
-      const astsDBA: any[]   = [];
+      const astsDBA:   any[] = [];
       const astsOtros: any[] = [];
 
       const recorrer = (nodos: NodoArchivo[]) => {
@@ -231,15 +223,17 @@ export class CodigoCompiladoService {
             if (!parser || !nodo.contenido?.trim()) continue;
             try {
               this.inicializarParserConManejador(parser, manejador);
-              const ast = parser.parser.parse(nodo.contenido);
+              const resultado = parser.parser.parse(nodo.contenido);
+              const ast       = this.extraerAST(resultado);
+              this.errores.push(...this.extraerErroresParser(resultado, nodo.nombre));
               if (nodo.nombre.endsWith('.dba')) astsDBA.push(ast);
               else astsOtros.push(ast);
             } catch (e: any) {
               this.errores.push({
-                lexema: e.hash?.text || '?',
-                linea: e.hash?.line || 0,
-                columna: e.hash?.loc?.first_column || 0,
-                tipo: e.hash ? 'Sintáctico' : 'Léxico',
+                lexema:      e.hash?.text || '?',
+                linea:       e.hash?.line || 0,
+                columna:     e.hash?.loc?.first_column || 0,
+                tipo:        e.hash ? 'Sintáctico' : 'Léxico',
                 descripcion: '[' + nodo.nombre + '] ' + e.message
               });
             }
@@ -250,21 +244,20 @@ export class CodigoCompiladoService {
       };
       recorrer(arbol);
 
-      // Recolectar errores del manejador
-      const erroresManejoErrores = manejador.getErrores();
-      for (const err of erroresManejoErrores) {
+      // Errores del manejador global
+      for (const err of manejador.getErrores()) {
         this.errores.push({
-          lexema: err.lexema,
-          linea: err.line,
-          columna: err.column,
-          tipo: err.type,
+          lexema:      err.lexema,
+          linea:       err.line,
+          columna:     err.column,
+          tipo:        err.type,
           descripcion: err.description
         });
       }
 
       if (this.errores.length > 0) return 'errors';
 
-      // Ejecutar sentencias DBA
+      // ── Ejecutar DBA del .dba ──
       const logDBA: string[] = [];
       for (const ast of astsDBA) {
         const sentencias = Array.isArray(ast) ? ast : [ast];
@@ -284,7 +277,12 @@ export class CodigoCompiladoService {
         }
       }
 
-      // Pasar el resolvedor de contenido al RenderService antes de renderizar
+      // ── Registrar handler de load en RenderService ──
+      // Cuando el Principal encuentra `load "archivo.y"` llama este callback
+      this.render.setOnLoad((destino: string, esArchivo: boolean) => {
+        return this.manejarLoad(destino, esArchivo);
+      });
+
       this.render.setResolverContenido((c: any) => this.resolverContenidoTexto(c));
 
       const todosLosAsts = [...astsDBA, ...astsOtros];
@@ -301,31 +299,87 @@ export class CodigoCompiladoService {
       const ventana = window.open();
       ventana?.document.write(
         '<!doctype html><html>' +
-        '<head>' +
-        '<meta charset="utf-8">' +
+        '<head><meta charset="utf-8">' +
         '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">' +
         '</head>' +
         '<body>' + html +
-        '<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>' +
-        '</body>' +
-        '</html>'
+        '<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"><\/script>' +
+        '</body></html>'
       );
 
       return 'console';
 
     } catch (error: any) {
-      this.consolaLines = [
-        '<span style="color:#f38ba8;">✖ ' + error.message + '</span>'
-      ];
+      this.consolaLines = ['<span style="color:#f38ba8;">✖ ' + error.message + '</span>'];
       this.errores.push({
-        lexema: error.hash?.text || '?',
-        linea: error.hash?.line || 0,
-        columna: error.hash?.loc?.first_column || 0,
-        tipo: error.hash ? 'Sintáctico' : 'Léxico',
+        lexema:      error.hash?.text || '?',
+        linea:       error.hash?.line || 0,
+        columna:     error.hash?.loc?.first_column || 0,
+        tipo:        error.hash ? 'Sintáctico' : 'Léxico',
         descripcion: error.message
       });
       Swal.fire({ icon: 'error', title: 'Error', text: error.message });
       return 'errors';
+    }
+  }
+
+  // ─── Manejar load "archivo.y" o load goTo ────────────────────────────────
+  // Cuando se hace load de un archivo .y → re-parsea y re-ejecuta ese archivo
+  // Cuando se hace load de un archivo .comp/.styles → re-registra sus componentes/estilos
+  // Cuando se hace load de una variable → el Principal ya la resolvió antes de llamar aquí
+  private manejarLoad(destino: string, esArchivo: boolean): string {
+    // Buscar el archivo en el árbol actual
+    const archivos = this.obtenerTodosLosArchivos(this.arbolActual);
+
+    // Normalizar: quitar ./ del inicio si existe
+    let nombreBuscado = destino;
+    if (nombreBuscado.startsWith('./')) nombreBuscado = nombreBuscado.substring(2);
+
+    const archivoDestino = archivos.find(a =>
+      a.nombre === nombreBuscado ||
+      a.nombre.endsWith('/' + nombreBuscado) ||
+      a.nombre === destino
+    );
+
+    if (!archivoDestino) {
+      console.warn('[load] Archivo no encontrado:', destino);
+      Swal.fire({
+        icon: 'warning',
+        title: 'load: archivo no encontrado',
+        text: 'No se encontró el archivo: ' + destino
+      });
+      return '';
+    }
+
+    if (!archivoDestino.contenido?.trim()) return '';
+
+    try {
+      const manejador = new ManejoErrores();
+      manejador.reset();
+      const parser = this.getParser(archivoDestino.nombre);
+      if (!parser) return '';
+
+      this.inicializarParserConManejador(parser, manejador);
+      const resultado = parser.parser.parse(archivoDestino.contenido);
+      const ast       = this.extraerAST(resultado);
+
+      // Si es un .y → re-ejecutar con el render actual (misma tabla de símbolos)
+      // Esto produce HTML nuevo que reemplaza/agrega al flujo actual
+      if (archivoDestino.nombre.endsWith('.y') && ast && ast.tipo === 'programa') {
+        // Re-renderizar solo este archivo con el estado actual
+        return this.render.render([ast]);
+      }
+
+      // Si es .comp → los componentes se registran en el próximo render
+      // Si es .styles → los estilos se procesan en el próximo render
+      // En ambos casos, para un load en tiempo de ejecución simplemente retornamos ''
+      // y el efecto se verá en la próxima ejecución completa
+      return '';
+
+    } catch (e: any) {
+      console.error('[load] Error al cargar:', destino, e.message);
+      Swal.fire({ icon: 'error', title: 'Error en load', text: e.message });
+      return '';
     }
   }
 

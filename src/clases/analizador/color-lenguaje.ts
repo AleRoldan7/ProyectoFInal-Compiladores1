@@ -1,68 +1,374 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // yfera-highlighter.ts
-// Syntax highlighter para los 3 lenguajes YFERA, extraído directamente
-// de las gramáticas Jison: .y/.comp  |  .styles  |  .dba
+// Usa los lexers que Jison ya compiló — NO duplica gramáticas
 // ─────────────────────────────────────────────────────────────────────────────
-// USO EN ArbolService / PestanasService:
+// REQUISITO: tener los parsers compilados con jison:
+//   jison gramatica.y     → parser-y.js
+//   jison gramatica.comp  → parser-comp.js   (mismo lexer que .y)
+//   jison gramatica.styles → parser-styles.js
+//   jison gramatica.dba   → parser-dba.js
+//
+// USO:
 //   import { YferaHighlighter } from './yfera-highlighter';
-//   const html = YferaHighlighter.highlight(codigo, nombreArchivo);
+//   const html = YferaHighlighter.highlight(codigo, 'archivo.y');
 // ─────────────────────────────────────────────────────────────────────────────
+
+import { parser as parserY }      from '../../analisisis-jison/analizador-lenguaje-principal.js';
+import { parser as parserComp }   from '../../analisisis-jison/analizador-component.js';
+import { parser as parserStyles } from '../../analisisis-jison/analizador-style.js';
+import { parser as parserDba }    from '../../analisisis-jison/analizador-dba.js';
+
+// ─── Tipos de token para el coloreado ────────────────────────────────────────
+
+export type TokenTipo =
+  | 'keyword'      // palabras reservadas → MORADO
+  | 'type'         // tipos de dato       → MORADO
+  | 'visual'       // FORM INPUT_TEXT …   → MORADO
+  | 'prop'         // propiedades CSS     → MORADO
+  | 'string'       // "texto" 'c' `sql`   → NARANJA
+  | 'number'       // 42  3.14  100px  50%→ CELESTE
+  | 'bool_lit'     // true false          → CELESTE
+  | 'color_val'    // #rrggbb             → CELESTE
+  | 'css_value'    // CENTER solid MONO   → CELESTE
+  | 'var'          // $variable           → BLANCO
+  | 'input_ref'    // @inputRef           → BLANCO
+  | 'component'    // @Componente         → BLANCO
+  | 'identifier'   // nombre genérico     → BLANCO
+  | 'operator'     // + - * / == …        → VERDE
+  | 'bracket'      // { } ( ) [ ] [[ ]]   → AZUL
+  | 'comment'      // /* … */ # …         → GRIS
+  | 'whitespace';
 
 export interface Token {
   tipo: TokenTipo;
   valor: string;
 }
 
-export type TokenTipo =
-  | 'keyword'      // palabras reservadas del lenguaje
-  | 'type'         // tipos de datos: int float string boolean char
-  | 'visual'       // elementos visuales: FORM INPUT_TEXT IMG T …
-  | 'prop'         // propiedades CSS en .styles
-  | 'css_value'    // valores CSS: CENTER solid MONO …
-  | 'string'       // "literal" y 'char'
-  | 'number'       // enteros, decimales, píxeles, porcentajes
-  | 'color'        // #rrggbb
-  | 'var'          // $variable
-  | 'input_ref'    // @inputRef  (en .y)
-  | 'component'    // @Componente (invocación)
-  | 'identifier'   // nombre genérico
-  | 'operator'     // == != >= <= + - * / % = . , ; : .
-  | 'bracket'      // { } ( ) [ ] [[ ]]
-  | 'comment'      // /* … */  y  # …
-  | 'import_path'  // ruta en import "…"
-  | 'backtick'     // `expresión SQL`
-  | 'whitespace';
+// ─── Paleta según especificación del proyecto ─────────────────────────────────
 
-// ─── Paleta de colores (CSS variables compatibles con el IDE oscuro) ──────────
-// Ajusta estos valores en tu CSS global si quieres cambiar el tema.
 const COLOR: Record<TokenTipo, string> = {
-  keyword:     '#c792ea',   // violeta  — for if else switch import main function
-  type:        '#ffcb6b',   // ámbar    — int float string boolean char
-  visual:      '#82aaff',   // azul     — FORM INPUT_TEXT IMG T SUBMIT
-  prop:        '#89ddff',   // celeste  — background color height width …
-  css_value:   '#c3e88d',   // verde    — CENTER solid MONO HELVETICA
-  string:      '#c3e88d',   // verde    — "texto"
-  number:      '#f78c6c',   // naranja  — 42  3.14  100px  50%
-  color:       '#f78c6c',   // naranja  — #ff0000
-  var:         '#e06c75',   // rojo suave — $variable
-  input_ref:   '#e5c07b',   // dorado   — @inputRef
-  component:   '#61dafb',   // cyan     — @ComponentName
-  identifier:  '#c8d0e0',   // blanco grisáceo
-  operator:    '#89ddff',   // celeste
-  bracket:     '#abb2bf',   // gris
-  comment:     '#546e7a',   // gris azulado — itálica
-  import_path: '#98c379',   // verde claro
-  backtick:    '#d19a66',   // naranja tierra
-  whitespace:  'inherit',
+  keyword:    '#a855f7',  // morado
+  type:       '#a855f7',  // morado
+  visual:     '#a855f7',  // morado
+  prop:       '#a855f7',  // morado
+  string:     '#fb923c',  // naranja
+  number:     '#67e8f9',  // celeste
+  bool_lit:   '#67e8f9',  // celeste
+  color_val:  '#67e8f9',  // celeste
+  css_value:  '#67e8f9',  // celeste
+  var:        '#ffffff',  // blanco
+  input_ref:  '#ffffff',  // blanco
+  component:  '#ffffff',  // blanco
+  identifier: '#ffffff',  // blanco
+  operator:   '#4ade80',  // verde
+  bracket:    '#60a5fa',  // azul
+  comment:    '#6b7280',  // gris
+  whitespace: 'inherit',
 };
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// MAP: nombre de token Jison → TokenTipo para coloreado
+// Cada objeto cubre exactamente los tokens definidos en el %lex de su gramática
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── .y / .comp ────────────────────────────────────────────────────────────────
+const MAP_Y: Record<string, TokenTipo> = {
+  // Tipos de dato → morado
+  T_INT:          'type',
+  T_FLOAT:        'type',
+  T_STRING:       'type',
+  T_BOOL:         'type',
+  T_CHAR:         'type',
+  T_FUNCTION:     'type',
+
+  // Palabras reservadas → morado
+  FOR_EACH:       'keyword',
+  TO:             'keyword',
+  FOR:            'keyword',
+  IF:             'keyword',
+  ELSE:           'keyword',
+  SWITCH:         'keyword',
+  CASE:           'keyword',
+  DEFAULT:        'keyword',
+  EMPTY:          'keyword',
+  TRACK:          'keyword',
+
+  // Elementos visuales → morado
+  FORM:           'visual',
+  INPUT_TEXT:     'visual',
+  INPUT_NUMBER:   'visual',
+  INPUT_BOOL:     'visual',
+  SUBMIT:         'visual',
+  IMG:            'visual',
+  TEXTO:          'visual',   // token 'T' del lexer
+
+  // Claves de input → morado (son palabras reservadas del lenguaje)
+  KW_ID:          'keyword',
+  KW_LABEL:       'keyword',
+  KW_VALUE:       'keyword',
+
+  // Booleanos → celeste (otros literales)
+  BOOL_TRUE:      'bool_lit',
+  BOOL_FALSE:     'bool_lit',
+
+  // Literales → naranja / celeste
+  STRING_LIT:     'string',
+  CHAR_LIT:       'string',
+  BACKTICK:       'string',   // el token ` solo; el contenido llega en yytext
+  DECIMAL:        'number',
+  ENTERO:         'number',
+
+  // Variables y referencias → blanco
+  VAR:            'var',
+  INPUT_REF:      'input_ref',
+
+  // Identificadores genéricos → blanco
+  IDENTIFICADOR:  'identifier',
+
+  // Operadores aritméticos y lógicos → verde
+  EQ:             'operator',
+  NEQ:            'operator',
+  GTE:            'operator',
+  LTE:            'operator',
+  MAS:            'operator',
+  MENOS:          'operator',
+  MULT:           'operator',
+  DIV:            'operator',
+  MOD:            'operator',
+  RANGO:          'operator',  // ..
+  ANGLE_A:        'operator',  // <  (como operador de comparación)
+  ANGLE_C:        'operator',  // >
+  COMA:           'operator',
+  PUNTO_COMA:     'operator',
+  DOS_PUNTOS:     'operator',
+  PUNTO:          'operator',
+  IGUAL:          'operator',
+
+  // Brackets / delimitadores → azul
+  TABLA_A:        'bracket',   // [[
+  TABLA_C:        'bracket',   // ]]
+  SECC_A:         'bracket',   // [
+  SECC_C:         'bracket',   // ]
+  LLAVE_A:        'bracket',   // {
+  LLAVE_C:        'bracket',   // }
+  PAREN_A:        'bracket',   // (
+  PAREN_C:        'bracket',   // )
+};
+
+// ── .y principal (archivo .y tiene además: import, main, execute, load) ───────
+// El .comp solo tiene componentes, el .y tiene el programa completo.
+// Ambos usan el mismo MAP porque comparten el mismo lexer Jison.
+const MAP_Y_MAIN: Record<string, TokenTipo> = {
+  ...MAP_Y,
+
+  // Palabras reservadas adicionales del .y (no están en .comp)
+  IMPORT:         'keyword',
+  MAIN:           'keyword',
+  EXECUTE:        'keyword',
+  LOAD:           'keyword',
+  WHILE:          'keyword',
+  DO:             'keyword',
+  BREAK:          'keyword',
+  CONTINUE:       'keyword',
+  FUNCTION:       'keyword',
+  ELSE_IF:        'keyword',
+
+  // Operadores adicionales
+  INCREMENT:      'operator',  // ++
+  GT:             'operator',  // >  (en .y se llama ANGLE_C, en .y main GT)
+  LT:             'operator',  // 
+  AND:            'operator',  // &&
+  OR:             'operator',  // ||
+  NOT:            'operator',  // !
+  ARROBA:         'operator',  // @ suelto (antes de IDENTIFICADOR en invocación)
+
+  // Literales adicionales
+  BACKTICK_EXPR:  'string',    // `...contenido SQL...`
+  CHAR_LIT:       'string',
+};
+
+// ── .styles ───────────────────────────────────────────────────────────────────
+const MAP_STYLES: Record<string, TokenTipo> = {
+  // Propiedades CSS → morado
+  BACKGROUND_COLOR:     'prop',
+  TEXT_ALIGN:           'prop',
+  TEXT_SIZE:            'prop',
+  TEXT_FONT:            'prop',
+  PADDING_LEFT:         'prop',
+  PADDING_RIGHT:        'prop',
+  PADDING_TOP:          'prop',
+  PADDING_BOTTOM:       'prop',
+  PADDING:              'prop',
+  MARGIN_LEFT:          'prop',
+  MARGIN_TOP:           'prop',
+  MARGIN_RIGHT:         'prop',
+  MARGIN_BOTTOM:        'prop',
+  MARGIN:               'prop',
+  MIN_HEIGHT:           'prop',
+  MAX_HEIGHT:           'prop',
+  MIN_WIDTH:            'prop',
+  MAX_WIDTH:            'prop',
+  HEIGHT:               'prop',
+  WIDTH:                'prop',
+  BORDER_TOP_STYLE:     'prop',
+  BORDER_TOP:           'prop',
+  BORDER_BOTTOM_STYLE:  'prop',
+  BORDER_BOTTOM:        'prop',
+  BORDER_LEFT_STYLE:    'prop',
+  BORDER_LEFT:          'prop',
+  BORDER_RIGHT_STYLE:   'prop',
+  BORDER_RIGHT:         'prop',
+  BORDER_RADIUS:        'prop',
+  BORDER_STYLE:         'prop',
+  BORDER_WIDTH:         'prop',
+  BORDER_COLOR:         'prop',
+  BORDER:               'prop',
+  COLOR:                'prop',
+
+  // Palabras reservadas del lenguaje → morado
+  EXTENDS:        'keyword',
+  FOR:            'keyword',   // @for
+  FROM:           'keyword',
+  THROUGH:        'keyword',
+  TO:             'keyword',
+
+  // Valores CSS → celeste (otros literales)
+  LIGHTGRAY:      'css_value',
+  DOTTED:         'css_value',
+  LINE:           'css_value',
+  DOUBLE:         'css_value',
+  SOLID:          'css_value',
+  CENTER:         'css_value',
+  RIGHT:          'css_value',
+  LEFT:           'css_value',
+  HELVETICA:      'css_value',
+  SANS_SERIF:     'css_value',
+  SANS:           'css_value',
+  MONO:           'css_value',
+  CURSIVE:        'css_value',
+
+  // Literales numéricos → celeste
+  PIXEL:          'number',
+  PORCENTAJE:     'number',
+  DECIMAL:        'number',
+  ENTERO:         'number',
+
+  // Color hex → celeste
+  COLOR_VALUE:    'color_val',
+
+  // Variable $contador → blanco
+  CONTADOR:       'var',
+
+  // Identificador genérico (nombre de clase) → blanco
+  IDENTIFICADOR:  'identifier',
+
+  // Operadores aritméticos → verde
+  MAS:            'operator',
+  MENOS:          'operator',
+  MULT:           'operator',
+  DIV:            'operator',
+  IGUAL:          'operator',
+  PUNTO_COMA:     'operator',
+
+  // Brackets → azul
+  LLAVE_A:        'bracket',
+  LLAVE_C:        'bracket',
+};
+
+// ── .dba ──────────────────────────────────────────────────────────────────────
+const MAP_DBA: Record<string, TokenTipo> = {
+  // Palabras reservadas → morado
+  TABLE:          'keyword',
+  COLUMNS:        'keyword',
+  DELETE:         'keyword',
+  IN:             'keyword',
+
+  // Literales → naranja / celeste
+  STRING_LIT:     'string',
+  DECIMAL:        'number',
+  ENTERO:         'number',
+
+  // Identificadores → blanco
+  IDENTIFICADOR:  'identifier',
+
+  // Operadores → verde
+  PUNTO:          'operator',
+  COMA:           'operator',
+  IGUAL:          'operator',
+  PUNTO_COMA:     'operator',
+
+  // Brackets → azul
+  CORCH_A:        'bracket',   // [
+  CORCH_C:        'bracket',   // ]
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Función central: corre el lexer de Jison y mapea cada token a su color
+// ─────────────────────────────────────────────────────────────────────────────
+
+function tokenizarConLexer(
+  code: string,
+  parser: { lexer: any },
+  map: Record<string, TokenTipo>
+): Token[] {
+  const tokens: Token[] = [];
+  const lexer = parser.lexer;
+
+  // El lexer de Jison necesita un manejador de errores mínimo
+  // para no lanzar excepciones al encontrar tokens desconocidos
+  lexer.yy = {
+    manejador: {
+      errorLexico: () => {},   // ignorar errores léxicos durante highlighting
+    }
+  };
+
+  lexer.setInput(code);
+
+  // Posición para reconstruir los espacios en blanco
+  // (Jison los omite con \s+ pero necesitamos preservarlos para el HTML)
+  let lastOffset = 0;
+
+  while (true) {
+    const tokenName = lexer.lex();
+
+    // EOF — Jison devuelve 1 o la string 'EOF'
+    if (tokenName === 1 || tokenName === 'EOF') break;
+
+    const valor: string = lexer.yytext;
+    const offset: number = lexer.offset ?? (lexer.yylloc?.range?.[0] ?? -1);
+
+    // Si hay un hueco entre el último token y este → era whitespace
+    if (offset > lastOffset && offset !== -1) {
+      tokens.push({
+        tipo: 'whitespace',
+        valor: code.slice(lastOffset, offset),
+      });
+    }
+
+    // Buscar en el mapa; si no está → 'identifier' (blanco)
+    const tipo: TokenTipo = map[tokenName] ?? 'identifier';
+    tokens.push({ tipo, valor });
+
+    lastOffset = offset !== -1 ? offset + valor.length : lastOffset + valor.length;
+  }
+
+  // Whitespace final si quedó algo
+  if (lastOffset < code.length) {
+    tokens.push({ tipo: 'whitespace', valor: code.slice(lastOffset) });
+  }
+
+  return tokens;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers HTML
+// ─────────────────────────────────────────────────────────────────────────────
 
 function esc(s: string): string {
   return s
     .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/</g,  '&lt;')
+    .replace(/>/g,  '&gt;');
 }
 
 function span(tipo: TokenTipo, valor: string): string {
@@ -70,323 +376,13 @@ function span(tipo: TokenTipo, valor: string): string {
   return `<span style="color:${COLOR[tipo]};${italic}">${esc(valor)}</span>`;
 }
 
-// ─── Tokenizador para .y / .comp ─────────────────────────────────────────────
-
-const Y_KEYWORDS = new Set([
-  'for each','for','if','else if','else','Switch','case','default',
-  'empty','track','import','main','execute','load','while','do',
-  'switch','break','continue','function',
-]);
-
-const Y_TYPES = new Set(['int','float','string','boolean','char']);
-
-const Y_VISUALS = new Set([
-  'FORM','INPUT_TEXT','INPUT_NUMBER','INPUT_BOOL','SUBMIT','IMG','T',
-]);
-
-const Y_BOOL = new Set(['true','false','True','False']);
-
-function tokenizeY(code: string): Token[] {
-  const tokens: Token[] = [];
-  let i = 0;
-
-  while (i < code.length) {
-    // Comentario bloque
-    if (code.startsWith('/*', i)) {
-      const end = code.indexOf('*/', i + 2);
-      const stop = end === -1 ? code.length : end + 2;
-      tokens.push({ tipo: 'comment', valor: code.slice(i, stop) });
-      i = stop;
-      continue;
-    }
-    // Comentario línea #
-    if (code[i] === '#') {
-      const end = code.indexOf('\n', i);
-      const stop = end === -1 ? code.length : end;
-      tokens.push({ tipo: 'comment', valor: code.slice(i, stop) });
-      i = stop;
-      continue;
-    }
-    // Backtick
-    if (code[i] === '`') {
-      const end = code.indexOf('`', i + 1);
-      const stop = end === -1 ? code.length : end + 1;
-      tokens.push({ tipo: 'backtick', valor: code.slice(i, stop) });
-      i = stop;
-      continue;
-    }
-    // String doble
-    if (code[i] === '"') {
-      let j = i + 1;
-      while (j < code.length && code[j] !== '"') j++;
-      tokens.push({ tipo: 'string', valor: code.slice(i, j + 1) });
-      i = j + 1;
-      continue;
-    }
-    // Char simple
-    if (code[i] === "'") {
-      let j = i + 1;
-      while (j < code.length && code[j] !== "'") j++;
-      tokens.push({ tipo: 'string', valor: code.slice(i, j + 1) });
-      i = j + 1;
-      continue;
-    }
-    // [[ y ]]
-    if (code.startsWith('[[', i)) { tokens.push({ tipo: 'bracket', valor: '[[' }); i += 2; continue; }
-    if (code.startsWith(']]', i)) { tokens.push({ tipo: 'bracket', valor: ']]' }); i += 2; continue; }
-    // Operadores 2 chars
-    const op2 = code.slice(i, i + 2);
-    if (['==','!=','>=','<=','&&','||','++'].includes(op2)) {
-      tokens.push({ tipo: 'operator', valor: op2 }); i += 2; continue;
-    }
-    // @ — ref o componente
-    if (code[i] === '@') {
-      let j = i + 1;
-      while (j < code.length && /[a-zA-Z0-9_]/.test(code[j])) j++;
-      const word = code.slice(i, j);
-      // Si empieza con mayúscula → invocación componente, si no → input_ref
-      const tipo: TokenTipo = /^@[A-Z]/.test(word) ? 'component' : 'input_ref';
-      tokens.push({ tipo, valor: word });
-      i = j;
-      continue;
-    }
-    // $variable
-    if (code[i] === '$') {
-      let j = i + 1;
-      while (j < code.length && /[a-zA-Z0-9_]/.test(code[j])) j++;
-      tokens.push({ tipo: 'var', valor: code.slice(i, j) });
-      i = j;
-      continue;
-    }
-    // Número
-    if (/[0-9]/.test(code[i])) {
-      let j = i;
-      while (j < code.length && /[0-9.]/.test(code[j])) j++;
-      tokens.push({ tipo: 'number', valor: code.slice(i, j) });
-      i = j;
-      continue;
-    }
-    // Identificador / keyword
-    if (/[a-zA-Z_]/.test(code[i])) {
-      let j = i;
-      while (j < code.length && /[a-zA-Z0-9_\-]/.test(code[j])) j++;
-      const word = code.slice(i, j);
-
-      // "for each" especial
-      if (word === 'for' && code.slice(j).match(/^\s+each\b/)) {
-        const m = code.slice(j).match(/^(\s+each)/);
-        const full = 'for' + (m ? m[1] : ' each');
-        tokens.push({ tipo: 'keyword', valor: full });
-        i = j + (m ? m[1].length : 5);
-        continue;
-      }
-      // "else if" especial
-      if (word === 'else' && code.slice(j).match(/^\s+if\b/)) {
-        const m = code.slice(j).match(/^(\s+if)/);
-        const full = 'else' + (m ? m[1] : ' if');
-        tokens.push({ tipo: 'keyword', valor: full });
-        i = j + (m ? m[1].length : 3);
-        continue;
-      }
-
-      if (Y_KEYWORDS.has(word))   tokens.push({ tipo: 'keyword',    valor: word });
-      else if (Y_TYPES.has(word)) tokens.push({ tipo: 'type',       valor: word });
-      else if (Y_VISUALS.has(word))tokens.push({ tipo: 'visual',    valor: word });
-      else if (Y_BOOL.has(word))  tokens.push({ tipo: 'keyword',    valor: word });
-      else                        tokens.push({ tipo: 'identifier', valor: word });
-      i = j;
-      continue;
-    }
-    // Brackets
-    if ('{}()[]'.includes(code[i])) {
-      tokens.push({ tipo: 'bracket', valor: code[i] }); i++; continue;
-    }
-    // Whitespace
-    if (/\s/.test(code[i])) {
-      let j = i;
-      while (j < code.length && /\s/.test(code[j])) j++;
-      tokens.push({ tipo: 'whitespace', valor: code.slice(i, j) });
-      i = j;
-      continue;
-    }
-    // Operador / puntuación
-    tokens.push({ tipo: 'operator', valor: code[i] }); i++;
-  }
-  return tokens;
-}
-
-// ─── Tokenizador para .styles ─────────────────────────────────────────────────
-
-// Propiedades CSS del lenguaje .styles (palabras clave multi-token)
-const STYLES_PROPS = [
-  'background color','text align','text size','text font',
-  'padding left','padding right','padding top','padding bottom','padding',
-  'margin left','margin top','margin right','margin bottom','margin',
-  'min-height','max-height','min-width','max-width','height','width',
-  'border top style','border top','border bottom style','border bottom',
-  'border left style','border left','border right style','border right',
-  'border radius','border style','border width','border color','border',
-  'color',
-].sort((a, b) => b.length - a.length); // más largos primero
-
-const STYLES_KEYWORDS = new Set([
-  'extends','@for','from','through','to',
-]);
-
-const STYLES_VALUES = new Set([
-  'lightgray','DOTTED','LINE','DOUBLE','solid',
-  'CENTER','RIGHT','LEFT',
-  'HELVETICA','SANS SERIF','SANS','MONO','CURSIVE',
-]);
-
-function tokenizeStyles(code: string): Token[] {
-  const tokens: Token[] = [];
-  let i = 0;
-
-  while (i < code.length) {
-    // Comentario bloque
-    if (code.startsWith('/*', i)) {
-      const end = code.indexOf('*/', i + 2);
-      const stop = end === -1 ? code.length : end + 2;
-      tokens.push({ tipo: 'comment', valor: code.slice(i, stop) });
-      i = stop;
-      continue;
-    }
-    // Color hex
-    if (code[i] === '#') {
-      let j = i + 1;
-      while (j < code.length && /[0-9a-fA-F]/.test(code[j])) j++;
-      tokens.push({ tipo: 'color', valor: code.slice(i, j) });
-      i = j;
-      continue;
-    }
-    // $contador
-    if (code[i] === '$') {
-      let j = i + 1;
-      while (j < code.length && /[a-zA-Z0-9_]/.test(code[j])) j++;
-      tokens.push({ tipo: 'var', valor: code.slice(i, j) });
-      i = j;
-      continue;
-    }
-    // Número con px o %
-    if (/[0-9]/.test(code[i])) {
-      let j = i;
-      while (j < code.length && /[0-9.]/.test(code[j])) j++;
-      if (code.slice(j, j + 2) === 'px') {
-        tokens.push({ tipo: 'number', valor: code.slice(i, j + 2) }); i = j + 2;
-      } else if (code[j] === '%') {
-        tokens.push({ tipo: 'number', valor: code.slice(i, j + 1) }); i = j + 1;
-      } else {
-        tokens.push({ tipo: 'number', valor: code.slice(i, j) }); i = j;
-      }
-      continue;
-    }
-    // Identificadores / keywords / props
-    if (/[a-zA-Z@_]/.test(code[i])) {
-      // Intentar prop multi-palabra (case-sensitive según grammar)
-      let matched = false;
-      for (const prop of STYLES_PROPS) {
-        if (code.slice(i, i + prop.length).toLowerCase() === prop.toLowerCase()
-          && (i + prop.length >= code.length || !/[a-zA-Z0-9_\-]/.test(code[i + prop.length]))) {
-          tokens.push({ tipo: 'prop', valor: code.slice(i, i + prop.length) });
-          i += prop.length;
-          matched = true;
-          break;
-        }
-      }
-      if (matched) continue;
-
-      // Identificador normal
-      let j = i;
-      while (j < code.length && /[a-zA-Z0-9_@\-]/.test(code[j])) j++;
-      const word = code.slice(i, j);
-
-      if (STYLES_KEYWORDS.has(word)) tokens.push({ tipo: 'keyword',   valor: word });
-      else if (STYLES_VALUES.has(word)) tokens.push({ tipo: 'css_value', valor: word });
-      else tokens.push({ tipo: 'identifier', valor: word });
-      i = j;
-      continue;
-    }
-    // Whitespace
-    if (/\s/.test(code[i])) {
-      let j = i;
-      while (j < code.length && /\s/.test(code[j])) j++;
-      tokens.push({ tipo: 'whitespace', valor: code.slice(i, j) });
-      i = j;
-      continue;
-    }
-    if ('{}();=+-*/'.includes(code[i])) {
-      tokens.push({ tipo: 'operator', valor: code[i] }); i++; continue;
-    }
-    tokens.push({ tipo: 'identifier', valor: code[i] }); i++;
-  }
-  return tokens;
-}
-
-// ─── Tokenizador para .dba ───────────────────────────────────────────────────
-
-const DBA_KEYWORDS = new Set(['TABLE','COLUMNS','DELETE','IN']);
-
-function tokenizeDba(code: string): Token[] {
-  const tokens: Token[] = [];
-  let i = 0;
-
-  while (i < code.length) {
-    // Comentario
-    if (code.startsWith('/*', i)) {
-      const end = code.indexOf('*/', i + 2);
-      const stop = end === -1 ? code.length : end + 2;
-      tokens.push({ tipo: 'comment', valor: code.slice(i, stop) });
-      i = stop;
-      continue;
-    }
-    // String
-    if (code[i] === '"') {
-      let j = i + 1;
-      while (j < code.length && code[j] !== '"') j++;
-      tokens.push({ tipo: 'string', valor: code.slice(i, j + 1) });
-      i = j + 1;
-      continue;
-    }
-    // Número
-    if (/[0-9]/.test(code[i])) {
-      let j = i;
-      while (j < code.length && /[0-9.]/.test(code[j])) j++;
-      tokens.push({ tipo: 'number', valor: code.slice(i, j) });
-      i = j;
-      continue;
-    }
-    // Identificador / keyword
-    if (/[a-zA-Z_]/.test(code[i])) {
-      let j = i;
-      while (j < code.length && /[a-zA-Z0-9_]/.test(code[j])) j++;
-      const word = code.slice(i, j);
-      tokens.push({ tipo: DBA_KEYWORDS.has(word) ? 'keyword' : 'identifier', valor: word });
-      i = j;
-      continue;
-    }
-    // Whitespace
-    if (/\s/.test(code[i])) {
-      let j = i;
-      while (j < code.length && /\s/.test(code[j])) j++;
-      tokens.push({ tipo: 'whitespace', valor: code.slice(i, j) });
-      i = j;
-      continue;
-    }
-    if ('[].,=;'.includes(code[i])) {
-      tokens.push({ tipo: 'operator', valor: code[i] }); i++; continue;
-    }
-    tokens.push({ tipo: 'identifier', valor: code[i] }); i++;
-  }
-  return tokens;
-}
-
-// ─── API pública ──────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// API pública
+// ─────────────────────────────────────────────────────────────────────────────
 
 export class YferaHighlighter {
 
-  /** Devuelve el tipo de lenguaje según extensión */
-  static getLang(nombre: string): 'y' | 'styles' | 'dba' | 'comp' | null {
+  static getLang(nombre: string): 'y' | 'comp' | 'styles' | 'dba' | null {
     if (nombre.endsWith('.y'))      return 'y';
     if (nombre.endsWith('.comp'))   return 'comp';
     if (nombre.endsWith('.styles')) return 'styles';
@@ -394,28 +390,22 @@ export class YferaHighlighter {
     return null;
   }
 
-  /** Tokeniza el código según el tipo de archivo */
   static tokenize(code: string, nombreArchivo: string): Token[] {
     const lang = this.getLang(nombreArchivo);
-    if (lang === 'y' || lang === 'comp') return tokenizeY(code);
-    if (lang === 'styles')               return tokenizeStyles(code);
-    if (lang === 'dba')                  return tokenizeDba(code);
-    // fallback: sin colorear
+
+    if (lang === 'y')      return tokenizarConLexer(code, parserY,      MAP_Y_MAIN);
+    if (lang === 'comp')   return tokenizarConLexer(code, parserComp,   MAP_Y);
+    if (lang === 'styles') return tokenizarConLexer(code, parserStyles, MAP_STYLES);
+    if (lang === 'dba')    return tokenizarConLexer(code, parserDba,    MAP_DBA);
+
     return [{ tipo: 'identifier', valor: code }];
   }
 
-  /**
-   * Devuelve HTML listo para innerHTML en la capa de resaltado.
-   * Mantiene saltos de línea y espacios intactos.
-   */
   static highlight(code: string, nombreArchivo: string): string {
-    const tokens = this.tokenize(code, nombreArchivo);
-    return tokens.map(tk => {
-      if (tk.tipo === 'whitespace') return esc(tk.valor);
-      return span(tk.tipo, tk.valor);
-    }).join('');
+    return this.tokenize(code, nombreArchivo)
+      .map(tk => tk.tipo === 'whitespace' ? esc(tk.valor) : span(tk.tipo, tk.valor))
+      .join('');
   }
 
-  /** Paleta completa por si quieres mostrar una leyenda en el IDE */
   static readonly palette = COLOR;
 }

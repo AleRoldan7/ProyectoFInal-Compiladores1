@@ -5,6 +5,126 @@
   padding: 0;
 }
 
+/* EDITOR BODY */
+.editor-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  background: black;
+}
+
+.line-numbers {
+  width: 52px;
+  background: #0d1117;
+  color: #6a737d;
+  text-align: right;
+  padding-top: 10px;           /* Igual que el textarea */
+  padding-bottom: 10px;
+  border-right: 1px solid #21262d;
+  overflow: hidden;
+  flex-shrink: 0;
+  font-family: 'Fira Code', monospace;
+  font-size: 14px;
+  line-height: 20px;
+  user-select: none;
+  position: relative;
+  z-index: 3;
+}
+
+.line-number-item {
+  height: 20px;                /* Altura exacta de cada línea */
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 10px;
+  box-sizing: border-box;
+}
+
+.line-error {
+  color: #f38ba8 !important;
+  font-weight: 600;
+}
+
+/* CODE WRAPPER */
+.code-wrapper {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+/* TEXTAREA y HIGHLIGHT */
+.code-highlight-layer,
+.code-editor-transparent {
+  padding: 10px 14px;
+  font-family: 'Fira Code', monospace;
+  font-size: 14px;
+  line-height: 20px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.code-highlight-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  color: #cdd6f4;
+  background: transparent;
+  z-index: 1;
+}
+
+.code-editor-transparent {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  color: transparent;
+  caret-color: #58a6ff;
+  z-index: 2;
+  resize: none;
+  border: none;
+  outline: none;
+  overflow: auto;
+}
+
+/* HIGHLIGHT LAYER */
+.code-highlight-layer {
+  position: absolute;
+  inset: 0;
+  padding: 10px 14px;
+  margin: 0;
+  font-family: 'Fira Code', monospace;
+  font-size: 14px;
+  line-height: 20px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  pointer-events: none;
+  overflow: hidden;
+  color: #cdd6f4;
+  background: transparent;
+  z-index: 1;
+}
+
+/* TEXTAREA */
+.code-editor-transparent {
+  position: absolute;
+  inset: 0;
+  padding: 10px 14px;             /* ← mismo padding-top que .line-numbers */
+  margin: 0;
+  font-family: 'Fira Code', monospace;
+  font-size: 14px;
+  line-height: 20px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow: auto;
+  background: transparent;
+  color: transparent;
+  caret-color: #58a6ff;
+  z-index: 2;
+  resize: none;
+  border: none;
+  outline: none;
+}
+
 /* CONTENEDOR PRINCIPAL */
 .ide {
   display: flex;

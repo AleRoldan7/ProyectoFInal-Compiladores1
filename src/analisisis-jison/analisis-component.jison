@@ -18,7 +18,7 @@
 "for"           return 'FOR';
 "if"            return 'IF';
 "else"          return 'ELSE';
-"Switch"        return 'SWITCH';
+"switch"        return 'SWITCH';
 "case"          return 'CASE';
 "default"       return 'DEFAULT';
 "empty"         return 'EMPTY';
@@ -47,6 +47,9 @@
 "!="            return 'NEQ';
 ">="            return 'GTE';
 "<="            return 'LTE';
+"&&"            return 'AND';
+"||"            return 'OR';
+"!"             return 'NOT';
 
 /* OPERADORES ARITMETICOS */
 "+"             return 'MAS';
@@ -66,7 +69,6 @@
 "}"             return 'LLAVE_C';
 "("             return 'PAREN_A';
 ")"             return 'PAREN_C';
-/* ANGULARES — tokens propios, separados de GT/LT */
 ".."            return 'RANGO';
 "<"             return 'ANGLE_A';
 ">"             return 'ANGLE_C';
@@ -87,7 +89,9 @@
 [a-zA-Z][a-zA-Z0-9_\-]*            return 'IDENTIFICADOR';
 
 <<EOF>>     return 'EOF';
-.   { yy.manejador.errorLexico(yytext, yylloc.first_line, yylloc.first_column+1); }
+.   {
+    yy.manejador.errorLexico(yytext, yylloc.first_line, yylloc.first_column + 1);
+}
 
 /lex
 
@@ -100,15 +104,31 @@
 %left MULT DIV MOD
 %right UMENOS
 
-
 %start inicio
 %%
 
 inicio
-    : lista_componentes EOF   
+    : lista_componentes EOF
     {
-        console.log("Componentes parseados:", $1.length); 
-        return $1; 
+        return {
+            ast: $1,
+            tokens: yy.manejador.getTokens(),
+            errores: yy.manejador.getErrores()
+        };
+    }
+    | error EOF
+    {
+        yy.manejador.errorSintactico(
+            yytext,
+            @1.first_line,
+            @1.first_column + 1,
+            "Error estructural: no se pudo reconocer ningún componente válido"
+        );
+        return {
+            ast: [],
+            tokens: yy.manejador.getTokens(),
+            errores: yy.manejador.getErrores()
+        };
     }
     ;
 
@@ -117,12 +137,34 @@ lista_componentes
     | componente                    { $$ = [$1]; }
     ;
 
-/* COMPONENTE */
+/* ─── COMPONENTE ──────────────────────────────────────────────── */
+
 componente
     : IDENTIFICADOR PAREN_A lista_params PAREN_C LLAVE_A lista_elementos LLAVE_C
         { $$ = { tipo:'componente', nombre:$1, params:$3, elementos:$6 }; }
     | IDENTIFICADOR PAREN_A PAREN_C LLAVE_A lista_elementos LLAVE_C
         { $$ = { tipo:'componente', nombre:$1, params:[], elementos:$5 }; }
+
+    /* Error: falta '(' en la declaración del componente */
+    | IDENTIFICADOR error LLAVE_A lista_elementos LLAVE_C
+    {
+        yy.manejador.errorComponenteSinParentesis($1, @2.first_line, @2.first_column + 1);
+        $$ = { tipo:'componente', nombre:$1, params:[], elementos:$4 };
+    }
+
+    /* Error: falta '{' para abrir el cuerpo del componente */
+    | IDENTIFICADOR PAREN_A lista_params PAREN_C error lista_elementos LLAVE_C
+    {
+        yy.manejador.errorFuncionSinLlave($1, @5.first_line, @5.first_column + 1);
+        $$ = { tipo:'componente', nombre:$1, params:$3, elementos:$6 };
+    }
+
+    /* Error: falta '}' para cerrar el cuerpo del componente */
+    | IDENTIFICADOR PAREN_A lista_params PAREN_C LLAVE_A lista_elementos error
+    {
+        yy.manejador.errorLlaveNoTerminada(@7.first_line, @7.first_column + 1);
+        $$ = { tipo:'componente', nombre:$1, params:$3, elementos:$6 };
+    }
     ;
 
 lista_params
@@ -131,14 +173,21 @@ lista_params
     ;
 
 param
-    : tipo IDENTIFICADOR        
+    : tipo IDENTIFICADOR
         { $$ = { tipo:$1, nombre:$2, esArray: false }; }
-    | tipo VAR                  
+    | tipo VAR
         { $$ = { tipo:$1, nombre:$2.substring(1), esArray: false }; }
-    | tipo SECC_A SECC_C IDENTIFICADOR   
+    | tipo SECC_A SECC_C IDENTIFICADOR
         { $$ = { tipo:$1, nombre:$4, esArray: true }; }
-    | tipo SECC_A SECC_C VAR             
+    | tipo SECC_A SECC_C VAR
         { $$ = { tipo:$1, nombre:$4.substring(1), esArray: true }; }
+
+    /* Error: tipo de parámetro desconocido */
+    | error IDENTIFICADOR
+    {
+        yy.manejador.errorTipoParametroInvalido(yytext, @1.first_line, @1.first_column + 1);
+        $$ = { tipo:'unknown', nombre:$2, esArray: false };
+    }
     ;
 
 tipo
@@ -149,8 +198,9 @@ tipo
     | T_CHAR     { $$ = 'char'; }
     | T_FUNCTION { $$ = 'function'; }
     ;
-    
-/* ELEMENTOS */
+
+/* ─── ELEMENTOS ───────────────────────────────────────────────── */
+
 lista_elementos
     : lista_elementos elemento  { $$ = $1; $$.push($2); }
     | /* vacío */               { $$ = []; }
@@ -166,22 +216,55 @@ elemento
     | ciclo_for_each
     | condicional_if
     | switch_comp
+
+    /* Error: elemento no reconocido dentro de un componente */
+    | error PUNTO_COMA
+    {
+        yy.manejador.errorTokenDesconocidoComp(yytext, @1.first_line, @1.first_column + 1);
+        $$ = null;
+    }
     ;
 
-/* SECCION */
+/* ─── SECCIÓN ─────────────────────────────────────────────────── */
+
 seccion
     : lista_estilos_ang SECC_A lista_elementos SECC_C
         { $$ = { tipo:'seccion', estilos:$1, hijos:$3 }; }
     | SECC_A lista_elementos SECC_C
         { $$ = { tipo:'seccion', estilos:[], hijos:$2 }; }
+
+    /* Error: sección sin ']' de cierre */
+    | SECC_A lista_elementos error
+    {
+        yy.manejador.errorSeccionSinCierre(@3.first_line, @3.first_column + 1);
+        $$ = { tipo:'seccion', estilos:[], hijos:$2 };
+    }
+    | lista_estilos_ang SECC_A lista_elementos error
+    {
+        yy.manejador.errorSeccionSinCierre(@4.first_line, @4.first_column + 1);
+        $$ = { tipo:'seccion', estilos:$1, hijos:$3 };
+    }
     ;
 
-/* TABLA */
+/* ─── TABLA ───────────────────────────────────────────────────── */
+
 tabla
     : lista_estilos_ang TABLA_A lista_filas TABLA_C
         { $$ = { tipo:'tabla', estilos:$1, filas:$3 }; }
     | TABLA_A lista_filas TABLA_C
         { $$ = { tipo:'tabla', estilos:[], filas:$2 }; }
+
+    /* Error: tabla sin ']]' de cierre */
+    | TABLA_A lista_filas error
+    {
+        yy.manejador.errorTablaSinCierre(@3.first_line, @3.first_column + 1);
+        $$ = { tipo:'tabla', estilos:[], filas:$2 };
+    }
+    | lista_estilos_ang TABLA_A lista_filas error
+    {
+        yy.manejador.errorTablaSinCierre(@4.first_line, @4.first_column + 1);
+        $$ = { tipo:'tabla', estilos:$1, filas:$3 };
+    }
     ;
 
 lista_filas
@@ -191,6 +274,13 @@ lista_filas
 
 fila
     : TABLA_A lista_celdas TABLA_C  { $$ = { celdas: $2 }; }
+
+    /* Error: fila sin ']]' de cierre */
+    | TABLA_A lista_celdas error
+    {
+        yy.manejador.errorTablaSinCierre(@3.first_line, @3.first_column + 1);
+        $$ = { celdas: $2 };
+    }
     ;
 
 lista_celdas
@@ -200,19 +290,38 @@ lista_celdas
 
 celda
     : TABLA_A lista_elementos TABLA_C   { $$ = { contenido: $2 }; }
+
+    /* Error: celda sin ']]' de cierre */
+    | TABLA_A lista_elementos error
+    {
+        yy.manejador.errorTablaSinCierre(@3.first_line, @3.first_column + 1);
+        $$ = { contenido: $2 };
+    }
     ;
 
-/* TEXTO */
+/* ─── TEXTO ───────────────────────────────────────────────────── */
+
 texto
     : TEXTO lista_estilos_ang PAREN_A expresion PAREN_C
         { $$ = { tipo:'texto', estilos:$2, contenido:$4 }; }
     | TEXTO PAREN_A expresion PAREN_C
         { $$ = { tipo:'texto', estilos:[], contenido:$3 }; }
+
+    /* Error: T sin '(' de apertura */
+    | TEXTO lista_estilos_ang error
+    {
+        yy.manejador.errorTextoSinParentesis(@3.first_line, @3.first_column + 1);
+        $$ = { tipo:'texto', estilos:$2, contenido:null };
+    }
+    | TEXTO error
+    {
+        yy.manejador.errorTextoSinParentesis(@2.first_line, @2.first_column + 1);
+        $$ = { tipo:'texto', estilos:[], contenido:null };
+    }
     ;
 
+/* ─── IMAGEN ──────────────────────────────────────────────────── */
 
-
-/* IMAGEN */
 imagen
     : IMG lista_estilos_ang PAREN_A lista_urls PAREN_C
         { $$ = { tipo:'imagen', estilos:$2, urls:$4 }; }
@@ -231,7 +340,8 @@ url_val
     | VAR SECC_A expresion SECC_C  { $$ = { tipo:'array_acc', nombre:$1, indice:$3 }; }
     ;
 
-/* FORMULARIO */
+/* ─── FORMULARIO ──────────────────────────────────────────────── */
+
 formulario
     : FORM lista_estilos_ang LLAVE_A lista_inputs LLAVE_C SUBMIT lista_estilos_ang LLAVE_A props_submit LLAVE_C
         { $$ = { tipo:'form', estilos:$2, inputs:$4, submit:{ estilos:$7, props:$9 } }; }
@@ -245,6 +355,18 @@ formulario
         { $$ = { tipo:'form', estilos:[], inputs:$3, submit:{ estilos:[], props:$7 } }; }
     | FORM LLAVE_A lista_inputs LLAVE_C
         { $$ = { tipo:'form', estilos:[], inputs:$3, submit:null }; }
+
+    /* Error: FORM sin '{' para abrir el cuerpo */
+    | FORM lista_estilos_ang error lista_inputs LLAVE_C
+    {
+        yy.manejador.errorFormSinLlave(@3.first_line, @3.first_column + 1);
+        $$ = { tipo:'form', estilos:$2, inputs:$4, submit:null };
+    }
+    | FORM error lista_inputs LLAVE_C
+    {
+        yy.manejador.errorFormSinLlave(@2.first_line, @2.first_column + 1);
+        $$ = { tipo:'form', estilos:[], inputs:$3, submit:null };
+    }
     ;
 
 lista_inputs
@@ -252,7 +374,8 @@ lista_inputs
     | /* vacío */                   { $$ = []; }
     ;
 
-/* INPUT  */
+/* ─── INPUT ───────────────────────────────────────────────────── */
+
 input_elemento
     : INPUT_TEXT lista_estilos_ang LLAVE_A propiedades_input LLAVE_C
         { $$ = { tipo:'input_text', estilos:$2, props:Object.fromEntries($4.map(p=>[p.clave,p.valor])) }; }
@@ -278,6 +401,23 @@ input_elemento
         { $$ = { tipo:'input_number', estilos:[], props:Object.fromEntries($3.map(p=>[p.clave,p.valor])) }; }
     | INPUT_BOOL PAREN_A propiedades_input PAREN_C
         { $$ = { tipo:'input_bool', estilos:[], props:Object.fromEntries($3.map(p=>[p.clave,p.valor])) }; }
+
+    /* Error: INPUT sin propiedades o sin delimitador correcto */
+    | INPUT_TEXT error LLAVE_C
+    {
+        yy.manejador.errorInputSinProps('INPUT_TEXT', @2.first_line, @2.first_column + 1);
+        $$ = { tipo:'input_text', estilos:[], props:{} };
+    }
+    | INPUT_NUMBER error LLAVE_C
+    {
+        yy.manejador.errorInputSinProps('INPUT_NUMBER', @2.first_line, @2.first_column + 1);
+        $$ = { tipo:'input_number', estilos:[], props:{} };
+    }
+    | INPUT_BOOL error LLAVE_C
+    {
+        yy.manejador.errorInputSinProps('INPUT_BOOL', @2.first_line, @2.first_column + 1);
+        $$ = { tipo:'input_bool', estilos:[], props:{} };
+    }
     ;
 
 propiedades_input
@@ -292,6 +432,18 @@ prop_input
     | KW_ID DOS_PUNTOS STRING_LIT           { $$ = { clave:'id', valor:$3.replace(/"/g,'') }; }
     | KW_LABEL DOS_PUNTOS STRING_LIT        { $$ = { clave:'label', valor:$3.replace(/"/g,'') }; }
     | KW_VALUE DOS_PUNTOS valor_input       { $$ = { clave:'value', valor:$3 }; }
+
+    /* Error: propiedad desconocida dentro de un INPUT */
+    | error DOS_PUNTOS valor_input
+    {
+        yy.manejador.errorTokenDesconocidoComp(yytext, @1.first_line, @1.first_column + 1);
+        $$ = { clave:'unknown', valor:$3 };
+    }
+    | error PUNTO_COMA
+    {
+        yy.manejador.errorPuntoComa(@2.first_line, @2.first_column + 1);
+        $$ = { clave:'unknown', valor:null };
+    }
     ;
 
 valor_input
@@ -308,6 +460,13 @@ props_submit
         { $$ = { label:$3.replace(/"/g,''), funcion:null }; }
     | KW_LABEL DOS_PUNTOS STRING_LIT T_FUNCTION DOS_PUNTOS llamada_funcion
         { $$ = { label:$3.replace(/"/g,''), funcion:$6 }; }
+
+    /* Error: SUBMIT sin label */
+    | error
+    {
+        yy.manejador.errorSubmitConElementos(@1.first_line, @1.first_column + 1);
+        $$ = { label:'', funcion:null };
+    }
     ;
 
 llamada_funcion
@@ -315,6 +474,16 @@ llamada_funcion
         { $$ = { nombre:$1, args:$3 }; }
     | VAR PAREN_A PAREN_C
         { $$ = { nombre:$1, args:[] }; }
+
+    /* Error: llamada de función malformada */
+    | VAR error PAREN_C
+    {
+        yy.manejador.errorSintactico(
+            $1, @2.first_line, @2.first_column + 1,
+            "Llamada de función malformada en SUBMIT"
+        );
+        $$ = { nombre:$1, args:[] };
+    }
     ;
 
 lista_args_submit
@@ -327,27 +496,35 @@ arg_submit
     | VAR           { $$ = { tipo:'var', nombre:$1 }; }
     ;
 
-/* CICLOS Y CONDICIONALES */
+/* ─── CICLOS Y CONDICIONALES ──────────────────────────────────── */
+
 ciclo_for_each
-    : FOR_EACH PAREN_A VAR DOS_PUNTOS VAR PAREN_C 
+    : FOR_EACH PAREN_A VAR DOS_PUNTOS VAR PAREN_C
       LLAVE_A lista_elementos LLAVE_C
-        { $$ = { tipo:'for_each', item:$3, array:{tipo:'var', nombre:$5.substring(1)}, 
+        { $$ = { tipo:'for_each', item:$3, array:{tipo:'var', nombre:$5.substring(1)},
                  cuerpo:$8, vacio:null }; }
 
-    | FOR_EACH PAREN_A VAR DOS_PUNTOS IDENTIFICADOR PAREN_C 
+    | FOR_EACH PAREN_A VAR DOS_PUNTOS IDENTIFICADOR PAREN_C
       LLAVE_A lista_elementos LLAVE_C
-        { $$ = { tipo:'for_each', item:$3, array:{tipo:'ident', nombre:$5}, 
+        { $$ = { tipo:'for_each', item:$3, array:{tipo:'ident', nombre:$5},
                  cuerpo:$8, vacio:null }; }
 
-    | FOR_EACH PAREN_A VAR DOS_PUNTOS VAR PAREN_C 
+    | FOR_EACH PAREN_A VAR DOS_PUNTOS VAR PAREN_C
       LLAVE_A lista_elementos LLAVE_C EMPTY LLAVE_A lista_elementos LLAVE_C
-        { $$ = { tipo:'for_each', item:$3, array:{tipo:'var', nombre:$5.substring(1)}, 
+        { $$ = { tipo:'for_each', item:$3, array:{tipo:'var', nombre:$5.substring(1)},
                  cuerpo:$8, vacio:$12 }; }
 
-    | FOR_EACH PAREN_A VAR DOS_PUNTOS IDENTIFICADOR PAREN_C 
+    | FOR_EACH PAREN_A VAR DOS_PUNTOS IDENTIFICADOR PAREN_C
       LLAVE_A lista_elementos LLAVE_C EMPTY LLAVE_A lista_elementos LLAVE_C
-        { $$ = { tipo:'for_each', item:$3, array:{tipo:'ident', nombre:$5}, 
+        { $$ = { tipo:'for_each', item:$3, array:{tipo:'ident', nombre:$5},
                  cuerpo:$8, vacio:$12 }; }
+
+    /* Error: sintaxis incorrecta en for each */
+    | FOR_EACH error LLAVE_C
+    {
+        yy.manejador.errorForCompSintaxis(@2.first_line, @2.first_column + 1);
+        $$ = { tipo:'for_each', item:null, array:null, cuerpo:[], vacio:null };
+    }
     ;
 
 ciclo_for_complejo
@@ -369,7 +546,16 @@ ciclo_for_comp
       IDENTIFICADOR IGUAL expresion PAREN_C LLAVE_A lista_elementos LLAVE_C
         { $$ = { tipo:'for', init:{var:$3,val:$5}, cond:$7,
                  update:{var:$9,val:$11}, cuerpo:$14 }; }
+
+    /* Error: sintaxis incorrecta en for clásico */
+    | FOR error LLAVE_C
+    {
+        yy.manejador.errorForSintaxis(@2.first_line, @2.first_column + 1);
+        $$ = { tipo:'for', init:null, cond:null, update:null, cuerpo:[] };
+    }
     ;
+
+/* ─── CONDICIONALES ───────────────────────────────────────────── */
 
 condicional_if
     : if_simple
@@ -380,21 +566,21 @@ rango
     : ENTERO PUNTO PUNTO expresion  { $$ = { desde:parseInt($1), hasta:$4, inclusivo:true }; }
     | ENTERO TO expresion           { $$ = { desde:parseInt($1), hasta:$3, inclusivo:false }; }
     ;
-/* IF SIN ELSE */
+
 if_simple
     : IF PAREN_A condicion PAREN_C LLAVE_A lista_elementos LLAVE_C
         {
-          $$ = {
-            tipo:'if',
-            condicion:$3,
-            entonces:$6,
-            sino_si:[],
-            sino:null
-          };
+          $$ = { tipo:'if', condicion:$3, entonces:$6, sino_si:[], sino:null };
         }
+
+    /* Error: IF sin condición válida */
+    | IF error LLAVE_A lista_elementos LLAVE_C
+    {
+        yy.manejador.errorCondicionNoBooleana(@2.first_line, @2.first_column + 1);
+        $$ = { tipo:'if', condicion:null, entonces:$4, sino_si:[], sino:null };
+    }
     ;
 
-/* IF CON ELSE / ELSE IF */
 if_completo
     : IF PAREN_A condicion PAREN_C LLAVE_A lista_elementos LLAVE_C lista_else
         {
@@ -416,14 +602,36 @@ lista_else
 rama_else
     : ELSE IF PAREN_A condicion PAREN_C LLAVE_A lista_elementos LLAVE_C
         { $$ = { tipo:'else_if', condicion:$4, cuerpo:$7 }; }
-
     | ELSE LLAVE_A lista_elementos LLAVE_C
         { $$ = { tipo:'else', cuerpo:$3 }; }
+
+    /* Error: else/else-if sin bloque '{' '}' */
+    | ELSE error LLAVE_C
+    {
+        yy.manejador.errorLlaveNoTerminada(@2.first_line, @2.first_column + 1);
+        $$ = { tipo:'else', cuerpo:[] };
+    }
     ;
+
+/* ─── SWITCH ──────────────────────────────────────────────────── */
 
 switch_comp
     : SWITCH PAREN_A expresion PAREN_C LLAVE_A lista_casos LLAVE_C
         { $$ = { tipo:'switch', expr:$3, casos:$6 }; }
+
+    /* Error: Switch sin expresión válida */
+    | SWITCH error LLAVE_A lista_casos LLAVE_C
+    {
+        yy.manejador.errorSwitchSintaxis(@2.first_line, @2.first_column + 1);
+        $$ = { tipo:'switch', expr:null, casos:$4 };
+    }
+
+    /* Error: Switch sin casos */
+    | SWITCH PAREN_A expresion PAREN_C LLAVE_A LLAVE_C
+    {
+        yy.manejador.errorSwitchSinDefault(@5.first_line, @5.first_column + 1);
+        $$ = { tipo:'switch', expr:$3, casos:[] };
+    }
     ;
 
 lista_casos
@@ -436,11 +644,31 @@ caso
         { $$ = { valor:$2.replace(/"/g,''), cuerpo:$4 }; }
     | DEFAULT LLAVE_A lista_elementos LLAVE_C
         { $$ = { valor:'default', cuerpo:$3 }; }
+
+    /* Error: case malformado */
+    | CASE error LLAVE_C
+    {
+        yy.manejador.errorSintactico(
+            yytext, @2.first_line, @2.first_column + 1,
+            "Case malformado: se esperaba 'case \"valor\" { ... }'"
+        );
+        $$ = { valor:'error', cuerpo:[] };
+    }
     ;
 
-/* ESTILOS — usa ANGLE_A y ANGLE_C, no GT/LT */
+/* ─── ESTILOS ─────────────────────────────────────────────────── */
+
 lista_estilos_ang
     : ANGLE_A lista_ids ANGLE_C   { $$ = $2; }
+
+    /* Error: lista de estilos sin '>' de cierre */
+    | ANGLE_A lista_ids error
+    {
+        yy.manejador.errorEstiloSinLlave(
+            $2.join(','), @3.first_line, @3.first_column + 1
+        );
+        $$ = $2;
+    }
     ;
 
 lista_ids
@@ -448,7 +676,8 @@ lista_ids
     | IDENTIFICADOR                 { $$ = [$1]; }
     ;
 
-/* EXPRESIONES */
+/* ─── EXPRESIONES ─────────────────────────────────────────────── */
+
 condicion
     : expresion ANGLE_A expresion { $$ = { op: '<', izq:$1, der:$3 }; }
     | expresion ANGLE_C expresion { $$ = { op: '>', izq:$1, der:$3 }; }

@@ -137,11 +137,10 @@
 
         <!-- LINE NUMBERS -->
         <div class="line-numbers" #lineNums>
-          <div *ngFor="let n of editor.lineas" [class.line-error]="editor.tieneErrorImport(n)">
+          <div *ngFor="let n of editor.lineas" [class.line-error]="editor.tieneErrorImport(n)" class="line-number-item">
             {{ n }}
           </div>
         </div>
-
         <!-- CODE -->
         <div class="code-wrapper" #wrapper>
 
@@ -150,9 +149,10 @@
 
           <!-- TEXTAREA -->
           <textarea #textarea class="code-editor-transparent" [(ngModel)]="editor.contenido" (input)="onEdit()"
-            (scroll)="syncScroll(textarea, highlightLayer)" (keydown)="handleKeydown($event)"
-            (keyup)="updatePos(textarea)" (click)="updatePos(textarea)" spellcheck="false">
-          </textarea>
+            (scroll)="editor.syncScroll(textarea, lineNums, highlightLayer)"
+            (keydown)="handleKeydown($event)" (keyup)="updatePos(textarea)" (click)="updatePos(textarea)"
+            spellcheck="false">
+</textarea>
 
         </div>
 
@@ -233,8 +233,8 @@
             </tr>
           </thead>
           <tbody>
-            <tr *ngFor="let e of compiler.errores; let i = index" 
-                class="error-row" [ngClass]="'row-' + e.tipo.toLowerCase().replace('á', 'a').replace('í', 'i')">
+            <tr *ngFor="let e of compiler.errores; let i = index" class="error-row"
+              [ngClass]="'row-' + e.tipo.toLowerCase().replace('á', 'a').replace('í', 'i')">
               <td class="cell-num">{{ i + 1 }}</td>
               <td class="cell-tipo">
                 <span class="err-badge" [ngClass]="{
@@ -313,7 +313,7 @@
       <span class="material-icons item-icon" [style.color]="fileTree.getColor(nodo.nombre)">
         {{ fileTree.getIcon(nodo) }}
       </span>
-      
+
       <span class="item-name" [style.color]="nodo.tipo === 'archivo' ? fileTree.getColor(nodo.nombre) : ''">
         {{ nodo.nombre }}
       </span>
