@@ -18,11 +18,6 @@ export interface ErrorReporte {
   descripcion: string;
 }
 
-interface LineaTerminal {
-  texto: string;
-  tipo: 'input' | 'output' | 'error' | 'info';
-}
-
 
 @Component({
   selector: 'app-page-principal',
@@ -70,11 +65,7 @@ export class PagePrincipal {
 
   consolaMode: 'console' | 'errors' | 'terminal' = 'console';
 
-  constructor(
-    public editor: PestanasService,
-    public fileTree: ArbolService,
-    public compiler: CodigoCompiladoService,
-    public terminal: TerminalService,
+  constructor(public editor: PestanasService,  public fileTree: ArbolService, public compiler: CodigoCompiladoService, public terminal: TerminalService,
     public dbViewer: DbaService,
     private cdr: ChangeDetectorRef
   ) {
@@ -89,12 +80,11 @@ export class PagePrincipal {
   }
 
 
-
   clickNodo(nodo: NodoArchivo) {
     const archivo = this.fileTree.clickNodo(nodo);
     if (archivo) {
       this.editor.abrirTab(archivo, this.arbol);
-      this.cdr.detectChanges();   // ← AGREGAR
+      this.cdr.detectChanges();   
     }
   }
 
@@ -145,8 +135,6 @@ export class PagePrincipal {
     });
   }
 
-
-
   switchTab(nodo: NodoArchivo) {
     this.editor.switchTab(nodo, this.arbol);
     this.cdr.detectChanges();
@@ -173,7 +161,6 @@ export class PagePrincipal {
   ) {
     const scrollTop = editor.scrollTop;
 
-    // Sincronización directa (más estable que translateY)
     if (lineNums) lineNums.scrollTop = scrollTop;
     if (highlight) {
       highlight.scrollTop = scrollTop;
@@ -210,7 +197,6 @@ export class PagePrincipal {
 
   async ejecutar() {
     this.consolaMode = await this.compiler.ejecutar(this.arbol);
-    // Si hay errores, cambiar automáticamente a la pestaña de errores
     if (this.compiler.errores.length > 0) {
       this.consolaMode = 'errors';
     }
@@ -271,12 +257,10 @@ export class PagePrincipal {
       return;
     }
 
-    // Obtener estilos
     const archivos = this.fileTree.obtenerTodosLosArchivos(this.arbol);
     const stylesFiles = archivos.filter(a => a.nombre.endsWith('.styles') && a.contenido);
     const stylesCss = stylesFiles.map(s => s.contenido).join('\n');
 
-    // Generar HTML con los estilos
     const htmlCompleto = `<!doctype html>
 <html lang="es">
 <head>
@@ -301,7 +285,6 @@ export class PagePrincipal {
     ventanaAbierta.document.write(htmlCompleto);
     ventanaAbierta.document.close();
 
-    // Opción de descargar
     Swal.fire({
       icon: 'success',
       title: 'Página generada',

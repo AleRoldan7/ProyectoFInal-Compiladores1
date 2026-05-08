@@ -78,8 +78,6 @@ export class SqliteService {
         resultados.push(...rows);
       }
 
-      /* ─── LOG RESULTADOS SELECT ───────────────── */
-
       if (resultados.length) {
 
         console.log('[SQLite] RESULTADOS:');
@@ -88,7 +86,6 @@ export class SqliteService {
 
       }
 
-      /* ─── LOG TABLAS AFECTADAS ────────────────── */
 
       const match =
         sql.match(/FROM\s+([a-zA-Z_][a-zA-Z0-9_]*)/i) ||

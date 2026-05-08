@@ -54,11 +54,7 @@ export class ManejoErrores {
     this.agregar(lexema, linea, col,
       `Char solo admite un carácter: '${lexema}'`, TipoError.LEXICO);
   }
-
-  // ══════════════════════════════════════════════════════════════════
-  //  ERRORES SINTÁCTICOS — generales
-  // ══════════════════════════════════════════════════════════════════
-
+  
   errorSintactico(lexema: string, linea: number, col: number, descripcion: string) {
     this.agregar(lexema, linea, col, descripcion, TipoError.SINTACTICO);
   }
@@ -78,11 +74,7 @@ export class ManejoErrores {
       "Se esperaba ';' al final de la instrucción", TipoError.SINTACTICO);
   }
 
-  // ══════════════════════════════════════════════════════════════════
-  //  LENGUAJE .styles
-  // ══════════════════════════════════════════════════════════════════
 
-  // Léxico .styles
   errorPropiedadDesconocida(prop: string, linea: number, col: number) {
     this.agregar(prop, linea, col,
       `Propiedad de estilo desconocida: '${prop}'`, TipoError.LEXICO);
@@ -98,7 +90,6 @@ export class ManejoErrores {
       `Unidad de medida no válida: '${unidad}'. Use números (px) o porcentaje (%)`, TipoError.LEXICO);
   }
 
-  // Sintáctico .styles
   errorEstiloSinLlave(nombre: string, linea: number, col: number) {
     this.agregar(nombre, linea, col,
       `Definición de estilo '${nombre}' sin '{': se esperaba apertura de bloque`, TipoError.SINTACTICO);
@@ -119,7 +110,6 @@ export class ManejoErrores {
       `Se esperaba '=' después de la propiedad '${prop}'`, TipoError.SINTACTICO);
   }
 
-  // Semántico .styles
   errorEstiloNoDefinido(nombre: string, linea: number, col: number) {
     this.agregar(nombre, linea, col,
       `El estilo '${nombre}' referenciado en 'extends' no está definido`, TipoError.SEMANTICO);
@@ -135,17 +125,12 @@ export class ManejoErrores {
       'Los bucles @for no se pueden anidar en el lenguaje de estilos', TipoError.SEMANTICO);
   }
 
-  // ══════════════════════════════════════════════════════════════════
-  //  LENGUAJE .comp
-  // ══════════════════════════════════════════════════════════════════
 
-  // Léxico .comp
   errorTokenDesconocidoComp(lexema: string, linea: number, col: number) {
     this.agregar(lexema, linea, col,
       `Token no reconocido en componente: '${lexema}'`, TipoError.LEXICO);
   }
 
-  // Sintáctico .comp
   errorComponenteSinParentesis(nombre: string, linea: number, col: number) {
     this.agregar(nombre, linea, col,
       `Componente '${nombre}': se esperaba '(' para la lista de parámetros`, TipoError.SINTACTICO);
@@ -191,7 +176,6 @@ export class ManejoErrores {
       "Switch sin casos: debe tener al menos un 'case'", TipoError.SINTACTICO);
   }
 
-  // Semántico .comp
   errorComponenteDuplicado(nombre: string, linea: number, col: number) {
     this.agregar(nombre, linea, col,
       `Componente '${nombre}' ya fue definido. Los nombres de componentes no se pueden repetir`, TipoError.SEMANTICO);
@@ -222,17 +206,12 @@ export class ManejoErrores {
       `Switch solo acepta variables de tipo int o string, se recibió: ${tipo}`, TipoError.SEMANTICO);
   }
 
-  // ══════════════════════════════════════════════════════════════════
-  //  LENGUAJE PRINCIPAL .y
-  // ══════════════════════════════════════════════════════════════════
 
-  // Léxico .y
   errorImportMalFormado(ruta: string, linea: number, col: number) {
     this.agregar(ruta, linea, col,
       `Import mal formado: '${ruta}'. La ruta debe ser relativa entre comillas`, TipoError.LEXICO);
   }
 
-  // Sintáctico .y
   errorImportSinPuntoComa(linea: number, col: number) {
     this.agregar('import', linea, col,
       "import: se esperaba ';' al final de la declaración", TipoError.SINTACTICO);
@@ -293,7 +272,6 @@ export class ManejoErrores {
       `Invocación de componente sin '@': use @${nombre}()`, TipoError.SINTACTICO);
   }
 
-  // Semántico .y
   errorImportNoEncontrado(ruta: string, linea: number, col: number) {
     this.agregar(ruta, linea, col,
       `No se encontró el archivo importado: '${ruta}'`, TipoError.SEMANTICO);
@@ -349,17 +327,11 @@ export class ManejoErrores {
       "'execute' solo puede usarse dentro de una función", TipoError.SEMANTICO);
   }
 
-  // ══════════════════════════════════════════════════════════════════
-  //  LENGUAJE .dba (base de datos)
-  // ══════════════════════════════════════════════════════════════════
-
-  // Léxico .dba
   errorTokenDBA(lexema: string, linea: number, col: number) {
     this.agregar(lexema, linea, col,
       `Token no reconocido en consola DBA: '${lexema}'`, TipoError.LEXICO);
   }
 
-  // Sintáctico .dba
   errorTablaCreacionSintaxis(linea: number, col: number) {
     this.agregar('TABLE', linea, col,
       "Sintaxis de creación: TABLE nombre COLUMNS col=tipo, col2=tipo;", TipoError.SINTACTICO);
@@ -390,7 +362,6 @@ export class ManejoErrores {
       "Instrucción DBA sin ';' al final", TipoError.SINTACTICO);
   }
 
-  // Semántico .dba
   errorTablaNoExiste(nombre: string, linea: number, col: number) {
     this.agregar(nombre, linea, col,
       `La tabla '${nombre}' no existe. Créala con TABLE ${nombre} COLUMNS ...;`, TipoError.SEMANTICO);

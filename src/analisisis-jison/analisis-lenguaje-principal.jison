@@ -154,6 +154,17 @@ declaracion_variable
     : tipo_simple IDENTIFICADOR IGUAL expresion PUNTO_COMA
         { $$ = { tipo:'declaracion', tipo_dato:$1, nombre:$2, valor:$4 }; }
 
+    | tipo_simple IDENTIFICADOR IGUAL EXECUTE BACKTICK_EXPR PUNTO_COMA
+    {
+        $$ = {
+            tipo:'declaracion_execute',
+            tipo_dato:$1,
+            isArray:false,
+            nombre:$2,
+            consulta:$5.replace(/`/g, '')
+        };
+    }
+
     | tipo_simple CORCH_A ENTERO CORCH_C IDENTIFICADOR PUNTO_COMA
         { $$ = { tipo:'declaracion_array', tipo_dato:$1, nombre:$5, tamano:parseInt($3), valor:null }; }
 
@@ -172,14 +183,15 @@ declaracion_variable
         { $$ = { tipo:'declaracion_array', tipo_dato:$1, nombre:$4, tamano:null, valor:$7 }; }
 
     | tipo_simple CORCH_A CORCH_C IDENTIFICADOR IGUAL EXECUTE BACKTICK_EXPR PUNTO_COMA
-{
-    $$ = {
-        tipo:'declaracion_execute',
-        tipo_dato:$1,
-        nombre:$4,
-        consulta:$7.replace(/`/g, '')
-    };
-}
+    {
+        $$ = {
+            tipo:'declaracion_execute',
+            tipo_dato:$1,
+            isArray:true,
+            nombre:$4,
+            consulta:$7.replace(/`/g, '')
+        };
+    }
     ;
 tipo_simple
     : T_INT     { $$ = 'int'; }
@@ -243,11 +255,15 @@ cuerpo_funcion
 
 instruccion_fn
     : EXECUTE BACKTICK_EXPR PUNTO_COMA
-        { $$ = { tipo:'execute_fn', consulta:$2 }; }
+    {
+        const consulta = $2.replace(/`/g, '');
+        const tieneVariables = /\$[a-zA-Z_][a-zA-Z0-9_]*/.test(consulta);
+        $$ = { tipo:'execute_fn', consulta:consulta, hasVariables:tieneVariables };
+    }
     | LOAD IDENTIFICADOR PUNTO_COMA
-        { $$ = { tipo:'load', destino:$2 }; }
+        { $$ = { tipo:'load', destino:$2, esFuncion:true }; }
     | LOAD STRING_LIT PUNTO_COMA
-        { $$ = { tipo:'load', destino:$2.replace(/"/g,'') }; }
+        { $$ = { tipo:'load', destino:$2.replace(/"/g,''), esFuncion:false }; }
 
     /* Error: instrucción inválida dentro de función */
     | error PUNTO_COMA
@@ -310,7 +326,11 @@ instruccion
     | CONTINUE PUNTO_COMA
         { $$ = { tipo:'continue' }; }
     | EXECUTE BACKTICK_EXPR PUNTO_COMA
-    { $$ = { tipo:'execute', consulta:$2 }; }
+        { $$ = { tipo:'execute', consulta:$2.replace(/`/g, '') }; }
+    | LOAD IDENTIFICADOR PUNTO_COMA
+        { $$ = { tipo:'load', destino:$2, esFuncion:true }; }
+    | LOAD STRING_LIT PUNTO_COMA
+        { $$ = { tipo:'load', destino:$2.replace(/"/g,''), esFuncion:false }; }
     /* Error: instrucción no reconocida — recuperar hasta ';' */
     | error PUNTO_COMA
     {

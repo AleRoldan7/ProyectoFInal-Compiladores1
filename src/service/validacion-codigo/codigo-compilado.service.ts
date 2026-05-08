@@ -5,17 +5,19 @@ import * as parserComponent from '../../analisisis-jison/analizador-component.js
 import * as parserPrincipal from '../../analisisis-jison/analizador-lenguaje-principal.js';
 import * as parserDBA       from '../../analisisis-jison/analizador-dba.js';
 
-import { NodoArchivo }   from '../../models/nodo-archivo.js';
-import { ErrorReporte }  from '../../pages/page-principal/page-principal/page-principal.js';
-import { RenderService } from '../renderizado/render.service.js';
-import { SqliteService } from '../sql/sqlite.service.js';
-import { ManejoErrores } from '../../clases/manejo-errores/errores.js';
-import Swal              from 'sweetalert2';
-import { CodigoService } from '../tabulacion-color/codigo.service.js';
+import { NodoArchivo }        from '../../models/nodo-archivo.js';
+import { ErrorReporte }       from '../../pages/page-principal/page-principal/page-principal.js';
+import { RenderService }      from '../renderizado/render.service.js';
+import { SqliteService }      from '../sql/sqlite.service.js';
+import { ManejoErrores }      from '../../clases/manejo-errores/errores.js';
+import { AnalizadorSemantico} from '../../clases/manejo-errores/analizador-semantico.js';
+import { RuntimeSql }         from '../sql/runtime-sql.js';
+import Swal                   from 'sweetalert2';
+import { CodigoService }      from '../tabulacion-color/codigo.service.js';
 
 export interface ResultadoCompilacion {
-  exito: boolean;
-  errores: ErrorReporte[];
+  exito:       boolean;
+  errores:     ErrorReporte[];
   consolaLines: string[];
   consolaMode: 'console' | 'errors';
 }
@@ -23,18 +25,17 @@ export interface ResultadoCompilacion {
 @Injectable({ providedIn: 'root' })
 export class CodigoCompiladoService {
 
-  errores: ErrorReporte[] = [];
-  consolaLines: string[] = [
+  errores:       ErrorReporte[] = [];
+  consolaLines:  string[]       = [
     '<span style="color:#45475a;">Cuando se ejecute aparece aca</span>'
   ];
   htmlCompilado: string = '';
 
-  // Guardamos el árbol de archivos para poder reutilizarlo en load
   private arbolActual: NodoArchivo[] = [];
 
   constructor(
-    private render: RenderService,
-    private sqlite: SqliteService,
+    private render:      RenderService,
+    private sqlite:      SqliteService,
     private highlighter: CodigoService
   ) {}
 
@@ -46,115 +47,53 @@ export class CodigoCompiladoService {
     return null;
   }
 
-  // ─── Mapeo tokens → símbolos legibles ────────────────────────────────────
-  private mapeoTokenos: Record<string, string> = {
-    'LLAVE_A': '{', 'LLAVE_C': '}',
-    'PAREN_A': '(', 'PAREN_C': ')',
-    'CORCH_A': '[', 'CORCH_C': ']',
-    'TABLA_A': '[', 'TABLA_C': ']',
-    'PUNTO_COMA': ';', 'COMA': ',', 'DOS_PUNTOS': ':',
-    'PUNTO': '.', 'ARROBA': '@',
-    'MAS': '+', 'MENOS': '-', 'MULT': '*', 'DIV': '/', 'MOD': '%',
-    'IGUAL': '=', 'EQ': '==', 'NEQ': '!=',
-    'GT': '>', 'LT': '<', 'GTE': '>=', 'LTE': '<=',
-    'AND': '&&', 'OR': '||', 'NOT': '!', 'INCREMENT': '++',
-    'IF': 'if', 'ELSE': 'else', 'ELSE_IF': 'else if',
-    'WHILE': 'while', 'FOR': 'for', 'FOR_EACH': 'for each',
-    'DO': 'do', 'FUNCTION': 'function', 'MAIN': 'main',
-    'SWITCH': 'switch', 'CASE': 'case', 'DEFAULT': 'default',
-    'BREAK': 'break', 'CONTINUE': 'continue', 'RETURN': 'return',
-    'T_INT': 'int', 'T_FLOAT': 'float', 'T_STRING': 'string',
-    'T_BOOL': 'boolean', 'T_CHAR': 'char',
-    'IMPORT': 'import', 'EXECUTE': 'execute', 'LOAD': 'load'
-  };
-
-  private traducirTokens(texto: string): string {
-    let resultado = texto;
-    for (const [token, simbolo] of Object.entries(this.mapeoTokenos)) {
-      resultado = resultado.replace(new RegExp(`'${token}'`, 'g'), `'${simbolo}'`);
-      resultado = resultado.replace(new RegExp(`got\\s+'${token}'`, 'g'), `got '${simbolo}'`);
-      resultado = resultado.replace(new RegExp(`${token},`, 'g'), `${simbolo},`);
-      resultado = resultado.replace(new RegExp(`${token}$`, 'g'), simbolo);
-      resultado = resultado.replace(new RegExp(`\\s${token}\\s`, 'g'), ` ${simbolo} `);
-    }
-    return resultado;
-  }
-
+  // ─── Limpiar mensaje de error del parser SIN regex ───────────────────────
   private limpiarMensajeError(mensaje: string): string {
-    const marcaParseError = 'Parse error on line ';
-    const idxParse = mensaje.indexOf(marcaParseError);
-    if (idxParse !== -1) {
-      const idxSalto = mensaje.indexOf('\n', idxParse);
-      mensaje = idxSalto !== -1 ? mensaje.substring(idxSalto + 1) : '';
+    if (!mensaje) return 'Error desconocido';
+    const marca = 'Parse error on line ';
+    let inicio  = 0;
+    let idx     = 0;
+    while (idx <= mensaje.length - marca.length) {
+      let ok = true;
+      for (let k = 0; k < marca.length; k++) {
+        if (mensaje[idx + k] !== marca[k]) { ok = false; break; }
+      }
+      if (ok) {
+        let fin = idx + marca.length;
+        while (fin < mensaje.length && mensaje[fin] !== '\n') fin++;
+        inicio = fin + 1;
+        break;
+      }
+      idx++;
     }
-    const lineas = mensaje.split('\n');
-    const lineasLimpias: string[] = [];
-    for (const linea of lineas) {
-      const recortada = linea.trim();
-      if (!recortada) continue;
-      let soloMarcadores = true;
-      for (let i = 0; i < recortada.length; i++) {
-        if (recortada[i] !== '-' && recortada[i] !== '^' && recortada[i] !== ' ') {
-          soloMarcadores = false; break;
+    const resultado: string[] = [];
+    let linea = '';
+    for (let i = inicio; i <= mensaje.length; i++) {
+      const ch = i < mensaje.length ? mensaje[i] : '\n';
+      if (ch === '\n') {
+        const l = linea.trim();
+        linea = '';
+        if (!l) continue;
+        let solo = true;
+        for (let j = 0; j < l.length; j++) {
+          if (l[j] !== '-' && l[j] !== '^' && l[j] !== ' ') { solo = false; break; }
         }
+        if (!solo) resultado.push(l);
+      } else {
+        linea += ch;
       }
-      if (soloMarcadores) continue;
-      lineasLimpias.push(recortada);
     }
-    let resultado = lineasLimpias.join(' ').trim();
-    const marcaExpecting = 'Expecting';
-    const idxExpecting = resultado.indexOf(marcaExpecting);
-    if (idxExpecting !== -1) {
-      const desde = idxExpecting + marcaExpecting.length;
-      let hasta = resultado.length;
-      for (let i = desde; i < resultado.length; i++) {
-        if (resultado[i] === ',' || resultado[i] === '.') { hasta = i; break; }
-      }
-      resultado = 'Expecting' + resultado.substring(desde, hasta).trim();
-    }
-    resultado = this.traducirTokens(resultado);
-    return resultado.length > 0 ? resultado : 'Error sintáctico desconocido';
+    return resultado.length > 0 ? resultado.join(' ') : 'Error sintáctico';
   }
 
-  resolverContenidoTexto(contenido: any): string {
-    if (typeof contenido === 'string') return contenido;
-    if (typeof contenido === 'number' || typeof contenido === 'boolean') return String(contenido);
-    if (typeof contenido === 'object' && contenido !== null) return this.evaluarNodoExpresion(contenido);
-    return '';
-  }
-
-  private evaluarNodoExpresion(nodo: any): string {
-    if (nodo === null || nodo === undefined) return '';
-    if (nodo.tipo === 'var')   return '$' + nodo.nombre;
-    if (nodo.tipo === 'ident') return nodo.nombre;
-    if (nodo.tipo === 'array_acc') {
-      return '$' + nodo.nombre + '[' + this.evaluarNodoExpresion(nodo.indice) + ']';
-    }
-    if (nodo.op !== undefined && nodo.izq !== undefined && nodo.der !== undefined) {
-      const izq = this.evaluarNodoExpresion(nodo.izq);
-      const der = this.evaluarNodoExpresion(nodo.der);
-      if (nodo.op === '+') return izq + der;
-      const ni = Number(izq), nd = Number(der);
-      if (!isNaN(ni) && !isNaN(nd)) {
-        if (nodo.op === '-') return String(ni - nd);
-        if (nodo.op === '*') return String(ni * nd);
-        if (nodo.op === '/') return nd !== 0 ? String(ni / nd) : 'DIV/0';
-        if (nodo.op === '%') return String(ni % nd);
-      }
-      return izq + ' ' + nodo.op + ' ' + der;
-    }
-    if (nodo.op === 'neg') return '-' + this.evaluarNodoExpresion(nodo.val);
-    return '';
-  }
-
-  private inicializarParserConManejador(parser: any, manejador: ManejoErrores) {
+  private inicializarParser(parser: any, manejador: ManejoErrores) {
     parser.parser.yy = { manejador };
-    const limpiarMensaje = (msg: string) => this.limpiarMensajeError(msg);
+    const limpiar = (msg: string) => this.limpiarMensajeError(msg);
     parser.parser.parseError = function(str: any, hash: any) {
-      const line  = (hash?.loc?.first_line)   || hash?.line   || 0;
-      const col   = (hash?.loc?.first_column) || hash?.column || 0;
-      const token = hash?.token || hash?.text || '';
-      manejador.errorSintactico(token, line, col, limpiarMensaje(String(str)));
+      const linea  = hash?.loc?.first_line   ?? hash?.line   ?? 0;
+      const col    = hash?.loc?.first_column ?? hash?.column ?? 0;
+      const lexema = hash?.token ?? hash?.text ?? '?';
+      manejador.errorSintactico(lexema, linea, col, limpiar(String(str)));
     };
   }
 
@@ -165,30 +104,106 @@ export class CodigoCompiladoService {
     return resultado;
   }
 
-  private extraerErroresParser(resultado: any, nombreArchivo: string): ErrorReporte[] {
-    const errores: ErrorReporte[] = [];
-    if (resultado && typeof resultado === 'object' && Array.isArray(resultado.errores)) {
-      for (const err of resultado.errores) {
-        errores.push({
-          lexema:      err.lexema      ?? err.text        ?? '?',
-          linea:       err.linea       ?? err.line        ?? 0,
-          columna:     err.columna     ?? err.column      ?? 0,
-          tipo:        err.tipo        ?? err.type        ?? 'Sintáctico',
-          descripcion: '[' + nombreArchivo + '] ' + (err.descripcion ?? err.description ?? 'Error desconocido')
-        });
-      }
+  private erroresParserAReporte(resultado: any, archivo: string): ErrorReporte[] {
+    const lista: ErrorReporte[] = [];
+    if (!resultado || !Array.isArray(resultado.errores)) return lista;
+    for (const err of resultado.errores) {
+      lista.push({
+        lexema:      err.lexema ?? '?',
+        linea:       err.linea  ?? 0,
+        columna:     err.columna ?? 0,
+        tipo:        err.tipo   ?? 'Sintáctico',
+        descripcion: '[' + archivo + '] ' + (err.descripcion ?? 'Error desconocido'),
+      });
     }
-    return errores;
+    return lista;
   }
 
-  // ─── Ejecución principal ──────────────────────────────────────────────────
-  async ejecutar(arbol: NodoArchivo[]): Promise<'console' | 'errors'> {
-    this.arbolActual = arbol;   // guardar para re-uso en load
+  private erroresSemanticosAReporte(manejador: ManejoErrores, archivo: string): ErrorReporte[] {
+    return manejador.getErrores().map(err => ({
+      lexema:      err.lexema      ?? '?',
+      linea:       err.line        ?? 0,
+      columna:     err.column      ?? 0,
+      tipo:        err.type        ?? 'Semántico',
+      descripcion: '[' + archivo + '] ' + (err.description ?? 'Error semántico'),
+    }));
+  }
 
-    const manejador = new ManejoErrores();
-    manejador.reset();
-    this.errores = [];
-    const now = new Date().toLocaleTimeString();
+  private extraerComponentes(
+    ast:     any,
+    archivo: string
+  ): { nombre: string; params: { tipo: string; nombre: string }[] }[] {
+    const lista: any[] = [];
+    if (!ast) return lista;
+    const nodos = Array.isArray(ast) ? ast : (ast.componentes ?? []);
+    for (const nodo of nodos) {
+      if (nodo?.tipo !== 'componente') continue;
+      let dup = false;
+      for (const c of lista) {
+        if (c.nombre === nodo.nombre) {
+          this.errores.push({
+            lexema:      nodo.nombre,
+            linea:       nodo.linea   ?? 0,
+            columna:     nodo.columna ?? 0,
+            tipo:        'Semántico',
+            descripcion: 'En ' + c.archivo + ': el componente ' + nodo.nombre + ' está duplicado'
+          });
+          dup = true; break;
+        }
+      }
+      if (dup) continue;
+      lista.push({
+        nombre:  nodo.nombre,
+        linea:   nodo.linea   ?? 0,
+        columna: nodo.columna ?? 0,
+        archivo,
+        params: (nodo.params ?? []).map((p: any) => ({
+          tipo:   p.tipo   ?? 'unknown',
+          nombre: p.nombre ?? ''
+        }))
+      });
+    }
+    return lista;
+  }
+
+  resolverContenidoTexto(contenido: any): string {
+    if (typeof contenido === 'string')  return contenido;
+    if (typeof contenido === 'number')  return String(contenido);
+    if (typeof contenido === 'boolean') return String(contenido);
+    if (typeof contenido === 'object' && contenido !== null) {
+      return this.evaluarExpresion(contenido);
+    }
+    return '';
+  }
+
+  private evaluarExpresion(nodo: any): string {
+    if (!nodo) return '';
+    if (nodo.tipo === 'var')       return '$' + nodo.nombre;
+    if (nodo.tipo === 'ident')     return nodo.nombre;
+    if (nodo.tipo === 'array_acc') return '$' + nodo.nombre + '[' + this.evaluarExpresion(nodo.indice) + ']';
+    if (nodo.op === 'neg')         return '-' + this.evaluarExpresion(nodo.val);
+    if (nodo.op && nodo.izq !== undefined && nodo.der !== undefined) {
+      const izq = this.evaluarExpresion(nodo.izq);
+      const der = this.evaluarExpresion(nodo.der);
+      if (nodo.op === '+') return izq + der;
+      const ni = Number(izq), nd = Number(der);
+      if (!isNaN(ni) && !isNaN(nd)) {
+        if (nodo.op === '-') return String(ni - nd);
+        if (nodo.op === '*') return String(ni * nd);
+        if (nodo.op === '/') return nd !== 0 ? String(ni / nd) : 'DIV/0';
+        if (nodo.op === '%') return String(ni % nd);
+      }
+      return izq + ' ' + nodo.op + ' ' + der;
+    }
+    return '';
+  }
+
+  // ─── EJECUCIÓN PRINCIPAL ─────────────────────────────────────────────────
+  async ejecutar(arbol: NodoArchivo[]): Promise<'console' | 'errors'> {
+    this.arbolActual = arbol;
+    this.errores     = [];
+    const now        = new Date().toLocaleTimeString();
+
     await this.sqlite.init();
 
     // Validar imports
@@ -198,43 +213,52 @@ export class CodigoCompiladoService {
       const erroresImport = this.highlighter.validarImports(archivoY.contenido || '', arbol);
       for (const ei of erroresImport) {
         this.errores.push({
-          lexema: ei.ruta, linea: ei.linea, columna: 1,
-          tipo: 'Semántico',
-          descripcion: '[' + archivoY.nombre + '] ' + ei.mensaje
+          lexema:      ei.ruta,
+          linea:       ei.linea,
+          columna:     1,
+          tipo:        'Semántico',
+          descripcion: '[' + archivoY.nombre + '] ' + ei.mensaje,
         });
       }
     }
-
     if (this.errores.length > 0) {
-      this.consolaLines = [
-        '<span style="color:#f38ba8;">Errores de import encontrados. Corrígelos antes de ejecutar.</span>'
-      ];
+      this.consolaLines = ['<span style="color:#f38ba8;">Errores de import. Corrígelos antes de ejecutar.</span>'];
       return 'errors';
     }
 
     try {
       const astsDBA:   any[] = [];
       const astsOtros: any[] = [];
+      const componentesRegistrados: any[] = [];
 
+      // ── Parsear todos los archivos ──
       const recorrer = (nodos: NodoArchivo[]) => {
         for (const nodo of nodos) {
           if (nodo.tipo === 'archivo') {
             const parser = this.getParser(nodo.nombre);
             if (!parser || !nodo.contenido?.trim()) continue;
+            const manejador = new ManejoErrores();
+            manejador.reset();
             try {
-              this.inicializarParserConManejador(parser, manejador);
+              this.inicializarParser(parser, manejador);
               const resultado = parser.parser.parse(nodo.contenido);
               const ast       = this.extraerAST(resultado);
-              this.errores.push(...this.extraerErroresParser(resultado, nodo.nombre));
-              if (nodo.nombre.endsWith('.dba')) astsDBA.push(ast);
-              else astsOtros.push(ast);
+              this.errores.push(...this.erroresParserAReporte(resultado, nodo.nombre));
+              if (nodo.nombre.endsWith('.dba')) {
+                astsDBA.push({ ast, archivo: nodo.nombre });
+              } else {
+                astsOtros.push({ ast, archivo: nodo.nombre });
+                if (nodo.nombre.endsWith('.comp')) {
+                  componentesRegistrados.push(...this.extraerComponentes(ast, nodo.nombre));
+                }
+              }
             } catch (e: any) {
               this.errores.push({
-                lexema:      e.hash?.text || '?',
-                linea:       e.hash?.line || 0,
-                columna:     e.hash?.loc?.first_column || 0,
+                lexema:      e.hash?.text ?? '?',
+                linea:       e.hash?.line ?? 0,
+                columna:     e.hash?.loc?.first_column ?? 0,
                 tipo:        e.hash ? 'Sintáctico' : 'Léxico',
-                descripcion: '[' + nodo.nombre + '] ' + e.message
+                descripcion: '[' + nodo.nombre + '] ' + e.message,
               });
             }
           } else if (nodo.hijos) {
@@ -244,30 +268,33 @@ export class CodigoCompiladoService {
       };
       recorrer(arbol);
 
-      // Errores del manejador global
-      for (const err of manejador.getErrores()) {
-        this.errores.push({
-          lexema:      err.lexema,
-          linea:       err.line,
-          columna:     err.column,
-          tipo:        err.type,
-          descripcion: err.description
-        });
+      // ── Análisis semántico ──
+      for (const { ast, archivo } of astsOtros) {
+        if (!archivo.endsWith('.y') || !ast || ast.tipo !== 'programa') continue;
+        const manejadorSem = new ManejoErrores();
+        manejadorSem.reset();
+        const semantico = new AnalizadorSemantico(manejadorSem);
+        for (const comp of componentesRegistrados) {
+          semantico.registrarComponente(comp.nombre, comp.params);
+        }
+        semantico.analizar(ast, []);
+        this.errores.push(...this.erroresSemanticosAReporte(manejadorSem, archivo));
       }
 
       if (this.errores.length > 0) return 'errors';
 
       // ── Ejecutar DBA del .dba ──
       const logDBA: string[] = [];
-      for (const ast of astsDBA) {
+      for (const { ast } of astsDBA) {
         const sentencias = Array.isArray(ast) ? ast : [ast];
         for (const s of sentencias) {
+          if (!s) continue;
           const sql = this.sqlite.nodoASQL(s);
           if (!sql) continue;
           try {
-            const resultado = this.sqlite.ejecutarSQL(sql);
+            const res = this.sqlite.ejecutarSQL(sql);
             if (s.tipo === 'select') {
-              logDBA.push('SELECT ' + s.columna + ' FROM ' + s.tabla + ' → ' + resultado.length + ' fila(s)');
+              logDBA.push('SELECT ' + s.columna + ' FROM ' + s.tabla + ' → ' + res.length + ' fila(s)');
             } else {
               logDBA.push(s.tipo.toUpperCase() + ' ' + s.tabla + ' OK');
             }
@@ -277,107 +304,136 @@ export class CodigoCompiladoService {
         }
       }
 
-      // ── Registrar handler de load en RenderService ──
-      // Cuando el Principal encuentra `load "archivo.y"` llama este callback
+      // ── Preparar todos los ASTs para el render ──
+      const todosLosAsts = [
+        ...astsDBA.map((x: any) => x.ast),
+        ...astsOtros.map((x: any) => x.ast),
+      ];
+
+      // ── Abrir ventana de resultado ──
+      const ventana = window.open('', '_blank');
+      if (!ventana) {
+        Swal.fire({ icon: 'warning', title: 'Popup bloqueado', text: 'Permite popups para ver el resultado' });
+        return 'errors';
+      }
+
+      // ── Crear RuntimeSql con callback de re-render ──
+      const runtime = new RuntimeSql(this.sqlite, () => {
+        // Este callback se llama cuando una función DBA termina
+        // Re-renderiza con los datos actualizados de la BD
+        const nuevoHtml = this.render.render(todosLosAsts);
+        if (ventana && !ventana.closed) {
+          const body = ventana.document.getElementById('yfera-body');
+          if (body) {
+            body.innerHTML = nuevoHtml;
+          } else {
+            ventana.document.body.innerHTML = nuevoHtml;
+          }
+          // Re-conectar eventos después del re-render
+          this.render.conectarEventos(ventana.document, runtime);
+        }
+      });
+
+      // ── Registrar funciones del .y ──
+      // Las funciones vienen en ast.declaraciones con tipo === 'funcion'
+      for (const { ast } of astsOtros) {
+        if (!ast) continue;
+        const declaraciones = ast.declaraciones || [];
+        for (const dec of declaraciones) {
+          if (dec && dec.tipo === 'funcion') {
+            runtime.registrarFuncion(dec);
+          }
+        }
+      }
+
+      // ── Configurar render ──
       this.render.setOnLoad((destino: string, esArchivo: boolean) => {
         return this.manejarLoad(destino, esArchivo);
       });
-
       this.render.setResolverContenido((c: any) => this.resolverContenidoTexto(c));
 
-      const todosLosAsts = [...astsDBA, ...astsOtros];
-      const html = this.render.render(todosLosAsts);
-      this.htmlCompilado = html;
+      // ── Primer render ──
+      const html           = this.render.render(todosLosAsts);
+      this.htmlCompilado   = html;
 
       this.consolaLines = [
         '<span style="color:#45475a;">[' + now + ']</span> Compilando...',
         ...logDBA.map(l => '<span style="color:#94e2d5;">🗄 ' + l + '</span>'),
         '<span style="color:#a6e3a1;">✔ Compilación exitosa.</span>',
-        '<span style="color:#89dceb;">✔ HTML generado correctamente.</span>'
+        '<span style="color:#89dceb;">✔ HTML generado correctamente.</span>',
       ];
 
-      const ventana = window.open();
-      ventana?.document.write(
+      // ── Escribir HTML en la ventana ──
+      ventana.document.open();
+      ventana.document.write(
         '<!doctype html><html>' +
-        '<head><meta charset="utf-8">' +
+        '<head>' +
+        '<meta charset="utf-8">' +
         '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">' +
         '</head>' +
-        '<body>' + html +
+        '<body id="yfera-body">' +
+        html +
         '<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"><\/script>' +
         '</body></html>'
       );
+      ventana.document.close();
+
+      // ── Conectar eventos cuando la ventana esté lista ──
+      ventana.addEventListener('load', () => {
+        console.log('[YFERA] Ventana cargada, conectando eventos...');
+        this.render.conectarEventos(ventana.document, runtime);
+      });
+
+      // Fallback: conectar también de inmediato por si 'load' ya pasó
+      setTimeout(() => {
+        if (ventana && !ventana.closed) {
+          this.render.conectarEventos(ventana.document, runtime);
+        }
+      }, 300);
 
       return 'console';
 
     } catch (error: any) {
-      this.consolaLines = ['<span style="color:#f38ba8;">✖ ' + error.message + '</span>'];
+      this.consolaLines = ['<span style="color:#f38ba8;">' + error.message + '</span>'];
       this.errores.push({
-        lexema:      error.hash?.text || '?',
-        linea:       error.hash?.line || 0,
-        columna:     error.hash?.loc?.first_column || 0,
+        lexema:      error.hash?.text ?? '?',
+        linea:       error.hash?.line ?? 0,
+        columna:     error.hash?.loc?.first_column ?? 0,
         tipo:        error.hash ? 'Sintáctico' : 'Léxico',
-        descripcion: error.message
+        descripcion: error.message,
       });
       Swal.fire({ icon: 'error', title: 'Error', text: error.message });
       return 'errors';
     }
   }
 
-  // ─── Manejar load "archivo.y" o load goTo ────────────────────────────────
-  // Cuando se hace load de un archivo .y → re-parsea y re-ejecuta ese archivo
-  // Cuando se hace load de un archivo .comp/.styles → re-registra sus componentes/estilos
-  // Cuando se hace load de una variable → el Principal ya la resolvió antes de llamar aquí
-  private manejarLoad(destino: string, esArchivo: boolean): string {
-    // Buscar el archivo en el árbol actual
+  private manejarLoad(destino: string, _esArchivo: boolean): string {
     const archivos = this.obtenerTodosLosArchivos(this.arbolActual);
-
-    // Normalizar: quitar ./ del inicio si existe
-    let nombreBuscado = destino;
-    if (nombreBuscado.startsWith('./')) nombreBuscado = nombreBuscado.substring(2);
-
-    const archivoDestino = archivos.find(a =>
-      a.nombre === nombreBuscado ||
-      a.nombre.endsWith('/' + nombreBuscado) ||
+    let nombre = destino;
+    if (nombre.startsWith('./')) nombre = nombre.substring(2);
+    const archivo = archivos.find(a =>
+      a.nombre === nombre ||
+      a.nombre.endsWith('/' + nombre) ||
       a.nombre === destino
     );
-
-    if (!archivoDestino) {
-      console.warn('[load] Archivo no encontrado:', destino);
-      Swal.fire({
-        icon: 'warning',
-        title: 'load: archivo no encontrado',
-        text: 'No se encontró el archivo: ' + destino
-      });
+    if (!archivo) {
+      Swal.fire({ icon: 'warning', title: 'load: archivo no encontrado', text: destino });
       return '';
     }
-
-    if (!archivoDestino.contenido?.trim()) return '';
-
+    if (!archivo.contenido?.trim()) return '';
     try {
       const manejador = new ManejoErrores();
       manejador.reset();
-      const parser = this.getParser(archivoDestino.nombre);
+      const parser = this.getParser(archivo.nombre);
       if (!parser) return '';
-
-      this.inicializarParserConManejador(parser, manejador);
-      const resultado = parser.parser.parse(archivoDestino.contenido);
-      const ast       = this.extraerAST(resultado);
-
-      // Si es un .y → re-ejecutar con el render actual (misma tabla de símbolos)
-      // Esto produce HTML nuevo que reemplaza/agrega al flujo actual
-      if (archivoDestino.nombre.endsWith('.y') && ast && ast.tipo === 'programa') {
-        // Re-renderizar solo este archivo con el estado actual
+      this.inicializarParser(parser, manejador);
+      const resultado = parser.parser.parse(archivo.contenido);
+      const ast = this.extraerAST(resultado);
+      if (archivo.nombre.endsWith('.y') && ast?.tipo === 'programa') {
         return this.render.render([ast]);
       }
-
-      // Si es .comp → los componentes se registran en el próximo render
-      // Si es .styles → los estilos se procesan en el próximo render
-      // En ambos casos, para un load en tiempo de ejecución simplemente retornamos ''
-      // y el efecto se verá en la próxima ejecución completa
       return '';
-
     } catch (e: any) {
-      console.error('[load] Error al cargar:', destino, e.message);
       Swal.fire({ icon: 'error', title: 'Error en load', text: e.message });
       return '';
     }
@@ -387,8 +443,9 @@ export class CodigoCompiladoService {
     let archivos: NodoArchivo[] = [];
     for (const nodo of nodos) {
       if (nodo.tipo === 'archivo') archivos.push(nodo);
-      if (nodo.tipo === 'carpeta' && nodo.hijos)
+      if (nodo.tipo === 'carpeta' && nodo.hijos) {
         archivos = archivos.concat(this.obtenerTodosLosArchivos(nodo.hijos));
+      }
     }
     return archivos;
   }

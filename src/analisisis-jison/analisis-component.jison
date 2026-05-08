@@ -18,7 +18,7 @@
 "for"           return 'FOR';
 "if"            return 'IF';
 "else"          return 'ELSE';
-"switch"        return 'SWITCH';
+"Switch"        return 'SWITCH';
 "case"          return 'CASE';
 "default"       return 'DEFAULT';
 "empty"         return 'EMPTY';
@@ -47,9 +47,6 @@
 "!="            return 'NEQ';
 ">="            return 'GTE';
 "<="            return 'LTE';
-"&&"            return 'AND';
-"||"            return 'OR';
-"!"             return 'NOT';
 
 /* OPERADORES ARITMETICOS */
 "+"             return 'MAS';
@@ -77,7 +74,9 @@
 ":"             return 'DOS_PUNTOS';
 "."             return 'PUNTO';
 "="             return 'IGUAL';
-"`"             return 'BACKTICK';
+
+/* TEMPLATE LITERAL — debe ir ANTES que STRING_LIT */
+"`"[^`]*"`"     return 'BACKTICK_EXPR';
 
 /* LITERALES */
 \"[^\"]*\"                          return 'STRING_LIT';
@@ -457,9 +456,9 @@ valor_input
 
 props_submit
     : KW_LABEL DOS_PUNTOS STRING_LIT
-        { $$ = { label:$3.replace(/"/g,''), funcion:null }; }
+        { $$ = { label:$3.slice(1,-1), funcion:null }; }
     | KW_LABEL DOS_PUNTOS STRING_LIT T_FUNCTION DOS_PUNTOS llamada_funcion
-        { $$ = { label:$3.replace(/"/g,''), funcion:$6 }; }
+        { $$ = { label:$3.slice(1,-1), funcion:$6 }; }
 
     /* Error: SUBMIT sin label */
     | error
@@ -470,9 +469,16 @@ props_submit
     ;
 
 llamada_funcion
+    /* function: $miFuncion(@input1, @input2) — nombre con $ */
     : VAR PAREN_A lista_args_submit PAREN_C
-        { $$ = { nombre:$1, args:$3 }; }
+        { $$ = { nombre:$1.substring(1), args:$3 }; }
     | VAR PAREN_A PAREN_C
+        { $$ = { nombre:$1.substring(1), args:[] }; }
+
+    /* function: miFuncion(@input1, @input2) — nombre sin $ (directo) */
+    | IDENTIFICADOR PAREN_A lista_args_submit PAREN_C
+        { $$ = { nombre:$1, args:$3 }; }
+    | IDENTIFICADOR PAREN_A PAREN_C
         { $$ = { nombre:$1, args:[] }; }
 
     /* Error: llamada de función malformada */
@@ -482,7 +488,7 @@ llamada_funcion
             $1, @2.first_line, @2.first_column + 1,
             "Llamada de función malformada en SUBMIT"
         );
-        $$ = { nombre:$1, args:[] };
+        $$ = { nombre:$1.substring(1), args:[] };
     }
     ;
 
@@ -492,8 +498,9 @@ lista_args_submit
     ;
 
 arg_submit
-    : INPUT_REF     { $$ = { tipo:'input_ref', nombre:$1 }; }
-    | VAR           { $$ = { tipo:'var', nombre:$1 }; }
+    : INPUT_REF     { $$ = { tipo:'input_ref', nombre:$1.substring(1) }; }
+    | VAR           { $$ = { tipo:'var', nombre:$1.substring(1) }; }
+    | IDENTIFICADOR { $$ = { tipo:'ident', nombre:$1 }; }
     ;
 
 /* ─── CICLOS Y CONDICIONALES ──────────────────────────────────── */
@@ -701,9 +708,11 @@ expresion
     | PAREN_A expresion PAREN_C     { $$ = $2; }
     | ENTERO            { $$ = parseInt($1); }
     | DECIMAL           { $$ = parseFloat($1); }
-    | STRING_LIT        { $$ = $1.replace(/"/g,''); }
+    | STRING_LIT        { $$ = $1.slice(1,-1); }
     | BOOL_TRUE         { $$ = true; }
     | BOOL_FALSE        { $$ = false; }
+    /* template literal: `hola $nombre tienes $edad años` */
+    | BACKTICK_EXPR     { $$ = { tipo:'template', valor:$1.slice(1,-1) }; }
     | VAR               { $$ = { tipo:'var', nombre:$1.substring(1) }; }
     | VAR SECC_A expresion SECC_C   { $$ = { tipo:'array_acc', nombre:$1.substring(1), indice:$3 }; }
     | IDENTIFICADOR     { $$ = { tipo:'ident', nombre:$1 }; }
