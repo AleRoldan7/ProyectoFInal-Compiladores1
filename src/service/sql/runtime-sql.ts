@@ -374,7 +374,6 @@ export class RuntimeSql {
             });
         } catch (err: any) {
             console.error('[RuntimeSql] Error mostrando popup:', err);
-            // Fallback: mostrar alert nativo si Swal falla
             alert(titulo + '\n\n' + mensaje + '\n\nLa página se recargará al hacer clic en OK.');
             if (this.popup && this.popup.defaultView) {
                 this.popup.defaultView.location.reload();

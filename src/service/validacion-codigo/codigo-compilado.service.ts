@@ -32,6 +32,7 @@ export class CodigoCompiladoService {
   ];
   htmlCompilado: string = '';
 
+  /* 09-05-2026 HORA 04:58 YA NO DOY MAS PERO DI TODO MI ESFUERZO ACA VIENE EL CODIGO YA PARA HACERLO HTML */
   private arbolActual: NodoArchivo[] = [];
   private astsDBAGlobales: any[] = [];
 

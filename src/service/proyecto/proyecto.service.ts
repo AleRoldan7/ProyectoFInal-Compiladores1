@@ -28,7 +28,6 @@ export class ProyectoService {
     return this.proyectoActivo?.arbol ?? [];
   }
 
-  // ── Crear proyecto nuevo ──────────────────────────────────────
   crearProyecto(nombre: string): Proyecto {
     const p: Proyecto = {
       id: crypto.randomUUID(),
@@ -53,13 +52,11 @@ export class ProyectoService {
     return p;
   }
 
-  // ── Seleccionar proyecto activo ───────────────────────────────
   seleccionar(id: string) {
     this.proyectoActivoId = id;
     this.guardarEnStorage();
   }
 
-  // ── Eliminar proyecto ─────────────────────────────────────────
   eliminar(id: string) {
     this.proyectos = this.proyectos.filter(p => p.id !== id);
     if (this.proyectoActivoId === id) {
@@ -68,13 +65,11 @@ export class ProyectoService {
     this.guardarEnStorage();
   }
 
-  // ── Renombrar proyecto ────────────────────────────────────────
   renombrar(id: string, nombre: string) {
     const p = this.proyectos.find(x => x.id === id);
     if (p) { p.nombre = nombre; this.guardarEnStorage(); }
   }
 
-  // ── Marcar modificado (llamar al editar archivos) ─────────────
   marcarModificado() {
     if (this.proyectoActivo) {
       this.proyectoActivo.fechaModificacion = new Date();
@@ -82,7 +77,6 @@ export class ProyectoService {
     }
   }
 
-  // ── Cargar proyecto desde ZIP/JSON ────────────────────────────
   importarArbol(nombre: string, arbol: NodoArchivo[]) {
     const p: Proyecto = {
       id: crypto.randomUUID(),
@@ -97,7 +91,6 @@ export class ProyectoService {
     return p;
   }
 
-  // ── Persistencia ──────────────────────────────────────────────
   guardarEnStorage() {
     try {
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify({
