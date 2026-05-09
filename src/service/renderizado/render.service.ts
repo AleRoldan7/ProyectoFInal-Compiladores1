@@ -9,41 +9,40 @@ import { AnalizadorEstilos } from '../../clases/analizador/analizador-estilos';
 @Injectable({ providedIn: 'root' })
 export class RenderService {
 
-  private tabla       = new TablaSimbolos();
-  private evaluador   = new Evaluador(this.tabla);
-  private estilos     = new AnalizadorEstilos(this.evaluador);
+  private tabla = new TablaSimbolos();
+  private evaluador = new Evaluador(this.tabla);
+  private estilos = new AnalizadorEstilos(this.evaluador);
   private componentes: Map<string, any> = new Map();
 
   private renderComp!: RenderizadorComponentes;
-  private ejecutor!:   Principal;
+  private ejecutor!: Principal;
 
-  // Callback registrado desde CodigoCompiladoService para manejar load "archivo.y"
   private onLoad: ((destino: string, esArchivo: boolean) => string) | null = null;
+  private popupDocument: Document | null = null;
 
-  constructor(private sqlite: SqliteService) {}
+  constructor(private sqlite: SqliteService) { }
 
   setResolverContenido(_fn: (c: any) => string): void {
-    // La resolución ya está dentro de RenderizadorComponentes.
-    // Mantenido por compatibilidad con CodigoCompiladoService.
+
   }
 
-  // ─── Registrar el handler de load desde CodigoCompiladoService ───────────
   setOnLoad(fn: (destino: string, esArchivo: boolean) => string): void {
     this.onLoad = fn;
   }
 
-  // ─── Render principal ─────────────────────────────────────────────────────
+  setPopupDocument(doc: Document): void {
+    this.popupDocument = doc;
+  }
+
   render(asts: any[]): string {
     this.reiniciar();
 
-    // 1. Ejecutar sentencias DBA (llenan la tabla de símbolos con SELECTs)
     for (const ast of asts) {
       if (Array.isArray(ast)) {
         this.ejecutarDBA(ast);
       }
     }
 
-    // 2. Procesar estilos (.styles → nodos tipo 'clase' o 'for')
     for (const ast of asts) {
       if (!Array.isArray(ast)) continue;
       for (const nodo of ast) {
@@ -54,7 +53,6 @@ export class RenderService {
       }
     }
 
-    // 3. Registrar componentes (.comp → nodos tipo 'componente')
     for (const ast of asts) {
       if (!Array.isArray(ast)) continue;
       for (const nodo of ast) {
@@ -64,19 +62,16 @@ export class RenderService {
       }
     }
 
-    // 4. Construir renderizadores con todo cargado
     this.renderComp = new RenderizadorComponentes(
       this.tabla, this.evaluador, this.estilos, this.componentes
     );
     this.ejecutor = new Principal(this.tabla, this.evaluador, this.renderComp);
 
-    // 5. Conectar SqliteService y el handler de load al Principal
     this.ejecutor.setSqlite(this.sqlite);
     if (this.onLoad) {
       this.ejecutor.setOnLoad(this.onLoad);
     }
 
-    // 6. Ejecutar el programa principal (.y → nodo tipo 'programa')
     let html = '';
     for (const ast of asts) {
       if (ast && ast.tipo === 'programa') {
@@ -96,7 +91,6 @@ export class RenderService {
     return '<style>' + css + '</style>' + html;
   }
 
-  // ─── Ejecutar sentencias DBA del archivo .dba ─────────────────────────────
   private ejecutarDBA(sentencias: any[]): void {
     for (const sentencia of sentencias) {
       if (!sentencia || !sentencia.tipo) continue;
@@ -106,7 +100,7 @@ export class RenderService {
 
         if (sentencia.tipo === 'select') {
           const resultado = this.sqlite.ejecutarSQL(sql);
-          const clave     = sentencia.tabla + '_' + sentencia.columna;
+          const clave = sentencia.tabla + '_' + sentencia.columna;
           this.tabla.set(clave, 'array', resultado.map((r: any) => r[sentencia.columna]));
           console.log('[DBA] SELECT ' + clave + ':', resultado);
         } else {
@@ -114,34 +108,42 @@ export class RenderService {
           console.log('[DBA] ' + sentencia.tipo.toUpperCase() + ' ejecutado');
         }
       } catch (e: any) {
+
         console.error('[DBA] Error:', e.message, sentencia);
+
+        if (this.popupDocument) {
+
+          this.mostrarSwal(
+            this.popupDocument,
+            'Error SQL',
+            e.message,
+            'error'
+          );
+
+        }
       }
     }
   }
 
-// ─── Conectar eventos dinámicos a todos los botones data-yf-click ────────
-  // Se llama después de cada render (inicial y re-renders)
+
   conectarEventos(doc: Document, runtime: any): void {
 
     const botones = doc.querySelectorAll('[data-yf-click]');
 
     botones.forEach((el: any) => {
 
-      // Clonar el elemento para remover listeners viejos y evitar duplicados
       const nuevo = el.cloneNode(true) as HTMLElement;
       el.parentNode?.replaceChild(nuevo, el);
 
       nuevo.addEventListener('click', async () => {
 
         const nombreFn = nuevo.getAttribute('data-yf-click') || '';
-        const argsRaw  = nuevo.getAttribute('data-yf-args')  || '[]';
+        const argsRaw = nuevo.getAttribute('data-yf-args') || '[]';
 
         if (!nombreFn) return;
 
-        // Parsear args — pueden contener { tipo:'input_ref', nombre:'x' }
         let argsAst: any[] = [];
         try {
-          // El atributo fue escapado con &quot; — restaurar
           const argsStr = argsRaw
             .split('&quot;').join('"')
             .split('&amp;').join('&');
@@ -150,15 +152,12 @@ export class RenderService {
           argsAst = [];
         }
 
-        // Buscar el formulario padre para obtener valores de inputs
         const form = nuevo.closest('form') as HTMLFormElement | null;
 
-        // Resolver cada arg
         const valores: any[] = [];
         for (const arg of argsAst) {
 
           if (arg && typeof arg === 'object' && arg.tipo === 'input_ref') {
-            // @nombre → buscar input con name="nombre" en el form padre
             const nombreInput = String(arg.nombre || '');
             const input = form
               ? form.querySelector('[name="' + nombreInput + '"]') as HTMLInputElement | null
@@ -177,10 +176,8 @@ export class RenderService {
             }
 
           } else if (arg && typeof arg === 'object' && arg.tipo === 'var') {
-            // Variable — ya fue resuelta al serializar, pasarla como null si aún es objeto
             valores.push(null);
           } else {
-            // Valor directo (string, number, boolean)
             valores.push(arg);
           }
         }
@@ -190,6 +187,8 @@ export class RenderService {
         try {
           await runtime.llamarFuncion(nombreFn, valores);
         } catch (err: any) {
+          this.mostrarSwal(doc, 'Error en SQL', err.message, 'error');
+
           console.error('[YFERA] Error al llamar función:', err);
         }
       });
@@ -202,5 +201,26 @@ export class RenderService {
     this.tabla.limpiar();
     this.estilos.limpiar();
     this.componentes.clear();
+  }
+
+  private mostrarSwal(
+    doc: Document,
+    titulo: string,
+    mensaje: string,
+    icono: any = 'info'
+  ): void {
+
+    const swal = (doc.defaultView as any)?.Swal;
+
+    if (!swal) {
+      console.error('Swal no encontrado en popup');
+      return;
+    }
+
+    swal.fire({
+      title: titulo,
+      text: mensaje,
+      icon: icono
+    });
   }
 }

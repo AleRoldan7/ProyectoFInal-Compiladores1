@@ -1,14 +1,7 @@
-// ═══════════════════════════════════════════════════════════════════
-// analizador-semantico.ts
-// Recorre el AST producido por el parser .y y detecta todos los
-// errores semánticos: variables, funciones, componentes, tipos,
-// valores negativos inválidos, arreglos, execute, etc.
-// ═══════════════════════════════════════════════════════════════════
-
 import { ManejoErrores } from './errores';
 
 
-type TipoDato = 'int' | 'float' | 'string' | 'boolean' | 'char' | 'function' | 'unknown';
+type TipoDato = 'int' | 'float' | 'string' | 'boolean' | 'char' | 'function' | 'desconocido';
 
 interface InfoVariable {
     nombre: string;
@@ -35,7 +28,7 @@ class TablaSimbolos {
     private ambito_actual = 'global';
 
     constructor() {
-        this.ambitos.push(new Map()); 
+        this.ambitos.push(new Map());
     }
 
     entrar(nombre: string) {
@@ -124,7 +117,7 @@ export class AnalizadorSemantico {
             const info: InfoFuncion = {
                 nombre: d.nombre,
                 params: (d.params ?? []).map((p: any) => ({
-                    tipo: (p.tipo ?? 'unknown') as TipoDato,
+                    tipo: (p.tipo ?? 'desconocido') as TipoDato,
                     nombre: p.nombre,
                 })),
                 linea: d.linea ?? 0,
@@ -153,7 +146,7 @@ export class AnalizadorSemantico {
 
 
     private analizarDeclaracionVar(d: any, enMain: boolean) {
-        const tipo = (d.tipo_dato ?? 'unknown') as TipoDato;
+        const tipo = (d.tipo_dato ?? 'desconocido') as TipoDato;
         const nombre: string = d.nombre;
         const linea = d.linea ?? 0;
         const col = d.col ?? 0;
@@ -164,7 +157,7 @@ export class AnalizadorSemantico {
         if (d.valor !== null && d.valor !== undefined) {
             const tipoValor = this.tipoExpresion(d.valor, linea, col);
 
-            if (tipoValor !== 'unknown' && !this.tiposCompatibles(tipo, tipoValor)) {
+            if (tipoValor !== 'desconocido' && !this.tiposCompatibles(tipo, tipoValor)) {
                 this.err.errorTipoIncompatible(tipo, tipoValor, linea, col);
             }
 
@@ -181,7 +174,7 @@ export class AnalizadorSemantico {
 
 
     private analizarDeclaracionArray(d: any) {
-        const tipo = (d.tipo_dato ?? 'unknown') as TipoDato;
+        const tipo = (d.tipo_dato ?? 'desconocido') as TipoDato;
         const nombre: string = d.nombre;
         const linea = d.linea ?? 0;
         const col = d.col ?? 0;
@@ -199,7 +192,7 @@ export class AnalizadorSemantico {
         if (Array.isArray(d.valor)) {
             for (const elem of d.valor) {
                 const te = this.tipoExpresion(elem, linea, col);
-                if (te !== 'unknown' && !this.tiposCompatibles(tipo, te)) {
+                if (te !== 'desconocido' && !this.tiposCompatibles(tipo, te)) {
                     this.err.errorTipoIncompatible(tipo, te, linea, col);
                 }
                 this.verificarNegativo(elem, tipo, linea, col);
@@ -209,7 +202,7 @@ export class AnalizadorSemantico {
 
 
     private analizarDeclaracionExecute(d: any, esGlobal: boolean) {
-        const tipo = (d.tipo_dato ?? 'unknown') as TipoDato;
+        const tipo = (d.tipo_dato ?? 'desconocido') as TipoDato;
         const nombre: string = d.nombre;
         const linea = d.linea ?? 0;
         const col = d.col ?? 0;
@@ -230,7 +223,7 @@ export class AnalizadorSemantico {
         this.simbolos.entrar(`funcion:${nombre}`);
 
         for (const p of (d.params ?? [])) {
-            const tipo = (p.tipo ?? 'unknown') as TipoDato;
+            const tipo = (p.tipo ?? 'desconocido') as TipoDato;
             this.simbolos.declarar({
                 nombre: p.nombre,
                 tipo,
@@ -330,7 +323,7 @@ export class AnalizadorSemantico {
         }
 
         const tipoValor = this.tipoExpresion(inst.valor, linea, col);
-        if (tipoValor !== 'unknown' && !this.tiposCompatibles(info.tipo, tipoValor)) {
+        if (tipoValor !== 'desconocido' && !this.tiposCompatibles(info.tipo, tipoValor)) {
             this.err.errorTipoIncompatible(info.tipo, tipoValor, linea, col);
         }
         this.verificarNegativo(inst.valor, info.tipo, linea, col);
@@ -354,7 +347,7 @@ export class AnalizadorSemantico {
         this.verificarIndiceNegativo(inst.indice, nombre, linea, col);
 
         const tipoValor = this.tipoExpresion(inst.valor, linea, col);
-        if (tipoValor !== 'unknown' && !this.tiposCompatibles(info.tipo, tipoValor)) {
+        if (tipoValor !== 'desconocido' && !this.tiposCompatibles(info.tipo, tipoValor)) {
             this.err.errorTipoIncompatible(info.tipo, tipoValor, linea, col);
         }
     }
@@ -383,7 +376,7 @@ export class AnalizadorSemantico {
         for (let i = 0; i < esperados; i++) {
             const paramTipo = comp.params[i].tipo;
             const argTipo = this.tipoExpresion(args[i], linea, col);
-            if (argTipo !== 'unknown' && !this.tiposCompatibles(paramTipo, argTipo)) {
+            if (argTipo !== 'desconocido' && !this.tiposCompatibles(paramTipo, argTipo)) {
                 this.err.errorTipoIncompatible(
                     paramTipo, argTipo, linea, col
                 );
@@ -401,7 +394,7 @@ export class AnalizadorSemantico {
         this.simbolos.salir();
     }
 
-   
+
 
     private analizarDoWhile(inst: any) {
         const linea = inst.linea ?? 0;
@@ -412,7 +405,7 @@ export class AnalizadorSemantico {
         this.verificarCondicion(inst.condicion, linea, col);
     }
 
-    
+
     private analizarFor(inst: any) {
         const linea = inst.linea ?? 0;
         const col = inst.col ?? 0;
@@ -429,9 +422,9 @@ export class AnalizadorSemantico {
                     linea, col,
                 });
             }
-            
+
             const tipoInit = this.tipoExpresion(inst.init.valor, linea, col);
-            if (!this.tiposCompatibles('int', tipoInit) && tipoInit !== 'unknown') {
+            if (!this.tiposCompatibles('int', tipoInit) && tipoInit !== 'desconocido') {
                 this.err.errorTipoIncompatible('int', tipoInit, linea, col);
             }
         }
@@ -481,7 +474,7 @@ export class AnalizadorSemantico {
         const col = inst.col ?? 0;
 
         const tipoExpr = this.tipoExpresion(inst.expr, linea, col);
-        if (tipoExpr !== 'unknown' && tipoExpr !== 'int' && tipoExpr !== 'string') {
+        if (tipoExpr !== 'desconocido' && tipoExpr !== 'int' && tipoExpr !== 'string') {
             this.err.errorSwitchTipoInvalido(tipoExpr, linea, col);
         }
 
@@ -507,7 +500,7 @@ export class AnalizadorSemantico {
                 valoresVistos.add(caso.valor);
 
                 const tipoCaso = typeof caso.valor === 'number' ? 'int' : 'string';
-                if (tipoExpr !== 'unknown' && !this.tiposCompatibles(tipoExpr, tipoCaso as TipoDato)) {
+                if (tipoExpr !== 'desconocido' && !this.tiposCompatibles(tipoExpr, tipoCaso as TipoDato)) {
                     this.err.errorTipoIncompatible(tipoExpr, tipoCaso, linea, col);
                 }
             }
@@ -521,10 +514,10 @@ export class AnalizadorSemantico {
 
     private verificarCondicion(cond: any, linea: number, col: number) {
         if (!cond) return;
-      
+
         if (cond.op === undefined) {
             const tipo = this.tipoExpresion(cond, linea, col);
-            if (tipo !== 'boolean' && tipo !== 'unknown') {
+            if (tipo !== 'boolean' && tipo !== 'desconocido') {
                 this.err.errorCondicionNoBooleana(linea, col);
             }
         }
@@ -568,7 +561,7 @@ export class AnalizadorSemantico {
 
 
     private tipoExpresion(expr: any, linea: number, col: number): TipoDato {
-        if (expr === null || expr === undefined) return 'unknown';
+        if (expr === null || expr === undefined) return 'desconocido';
 
         if (typeof expr === 'number') {
             return Number.isInteger(expr) ? 'int' : 'float';
@@ -578,7 +571,7 @@ export class AnalizadorSemantico {
             return expr.length === 1 ? 'char' : 'string';
         }
 
-        if (typeof expr !== 'object') return 'unknown';
+        if (typeof expr !== 'object') return 'desconocido';
 
         switch (expr.tipo) {
             case 'var':
@@ -592,18 +585,18 @@ export class AnalizadorSemantico {
                 if (!info) {
                     if (this.funciones.has(expr.nombre)) return 'function';
                     this.err.errorVariableNoDeclarada(expr.nombre, linea, col);
-                    return 'unknown';
+                    return 'desconocido';
                 }
                 return info.tipo;
             }
 
             case 'array_acc': {
                 const info = this.simbolos.buscar(expr.nombre);
-                if (!info) return 'unknown';
+                if (!info) return 'desconocido';
                 if (!info.esArray) {
                     this.err.errorSintactico(expr.nombre, linea, col,
                         `'${expr.nombre}' no es un arreglo`);
-                    return 'unknown';
+                    return 'desconocido';
                 }
                 return info.tipo;
             }
@@ -619,7 +612,7 @@ export class AnalizadorSemantico {
                     const td = this.tipoExpresion(expr.der, linea, col);
                     if (ti === 'float' || td === 'float') return 'float';
                     if (ti === 'int' || td === 'int') return 'int';
-                    return 'unknown';
+                    return 'desconocido';
                 }
                 case 'neg':
                     return this.tipoExpresion(expr.val, linea, col);
@@ -627,11 +620,11 @@ export class AnalizadorSemantico {
                 case '<=': case '>=': case '&&': case '||': case '!':
                     return 'boolean';
                 default:
-                    return 'unknown';
+                    return 'desconocido';
             }
         }
 
-        return 'unknown';
+        return 'desconocido';
     }
 
 
@@ -689,6 +682,9 @@ export class AnalizadorSemantico {
     ) {
         if (!consulta) return;
 
+        const consultaSinVars = consulta.replace(/\$[a-zA-Z_][a-zA-Z0-9_]*/g, '0');
+
+        const esCreate = /^\s*TABLE\s+[a-zA-Z_][a-zA-Z0-9_]*\s+COLUMNS\s+.+/i.test(consultaSinVars);
         const esSelect = /^[a-zA-Z_][a-zA-Z0-9_]*\.[a-zA-Z_][a-zA-Z0-9_]*$/.test(consulta);
         const esDelete = /\bDELETE\b/.test(consulta);
         const esUpdate = /\bIN\b/.test(consulta) && /\[/.test(consulta);
@@ -700,14 +696,16 @@ export class AnalizadorSemantico {
             return;
         }
 
-        if (!esSelect && !esDelete && !esUpdate && !esInsert) {
+        if (!esSelect && !esCreate && !esDelete && !esUpdate && !esInsert) {
             this.err.errorSintactico('execute', linea, col,
                 `Consulta execute no reconocida: '${consulta}'. ` +
-                `Formatos: tabla.col | tabla[col=val] | tabla[col=val] IN id | tabla DELETE id`);
+                `Formatos válidos: tabla.col | TABLE nombre COLUMNS col=tipo | ` +
+                `tabla[col=val] | tabla[col=val] IN id | tabla DELETE id`);
+            return;
         }
 
         if (esDelete) {
-            const m = consulta.match(/DELETE\s+(.+)$/);
+            const m = consulta.match(/DELETE\s+(.+)$/i);
             if (m) {
                 const id = m[1].trim();
                 const esNumero = /^\d+$/.test(id);
@@ -723,7 +721,7 @@ export class AnalizadorSemantico {
         }
 
         if (esUpdate) {
-            const m = consulta.match(/IN\s+(.+)$/);
+            const m = consulta.match(/IN\s+(\S+)\s*$/i);
             if (m) {
                 const id = m[1].trim();
                 const esNumero = /^\d+$/.test(id);
@@ -771,7 +769,7 @@ export class AnalizadorSemantico {
         this.componentes.set(nombre, {
             nombre,
             params: params.map(p => ({
-                tipo: (p.tipo ?? 'unknown') as TipoDato,
+                tipo: (p.tipo ?? 'desconocido') as TipoDato,
                 nombre: p.nombre,
             })),
         });

@@ -10,77 +10,137 @@
 
   <!-- TOOLBAR -->
   <div class="toolbar">
-
-    <button class="tool-btn" (click)="crearArchivo()">
+    <button class="tool-btn" (click)="crearArchivo()" title="Crear archivo">
       <span class="material-icons">description</span>
     </button>
-
-    <button class="tool-btn" (click)="crearCarpeta()">
+    <button class="tool-btn" (click)="crearCarpeta()" title="Crear Carpeta">
       <span class="material-icons">folder</span>
     </button>
-
     <div class="tool-sep"></div>
-
     <button class="tool-btn" (click)="exportarZip()" title="Exportar proyecto como ZIP">
       <span class="material-icons">download</span>
     </button>
-
     <button class="tool-btn" (click)="abrirProyecto()" title="Abrir proyecto desde archivo">
       <span class="material-icons">folder_open</span>
     </button>
-
     <button class="tool-btn" (click)="cargarArchivos()" title="Cargar archivos individuales">
       <span class="material-icons">upload</span>
     </button>
-
     <button class="tool-btn" (click)="guardarPaginaCompilada()" title="Guardar página compilada">
       <span class="material-icons">save</span>
     </button>
-
     <div class="tool-sep"></div>
-
-    <button class="tool-btn" (click)="verArbolTrabajo()">
+    <button class="tool-btn" (click)="verArbolTrabajo()" title="Ver Árbol">
       <span class="material-icons">account_tree</span>
     </button>
-
-    <button class="tool-btn" (click)="verBaseDeDatos()">
+    <button class="tool-btn" (click)="verBaseDeDatos()" title="Ver Base De Datos">
       <span class="material-icons">storage</span>
     </button>
-
+    <button class="tool-btn" (click)="limpiarBD()" title="Restaurar Base De Datos">
+      <span class="material-icons">cleaning_services</span>
+    </button>
     <div class="tool-sep"></div>
-
-    <button class="tool-btn run" (click)="ejecutar()">
+    <button class="tool-btn run" (click)="ejecutar()" title="Compilar y ejecutar proyecto activo">
       <span class="material-icons">play_arrow</span>
     </button>
-
+    <div class="tool-sep"></div>
+    <!-- Indicador del proyecto activo en toolbar -->
+    <span class="toolbar-proyecto-activo" *ngIf="proyectos.proyectoActivo">
+      <span class="material-icons" style="font-size:14px;vertical-align:middle">bolt</span>
+      {{ proyectos.proyectoActivo.nombre }}
+    </span>
   </div>
 
   <div class="main">
 
-    <!-- SIDEBAR -->
+    <!-- SIDEBAR IZQUIERDO: Proyectos + Explorador -->
     <div class="sidebar">
-      <div class="sidebar-header">
-        <span class="sidebar-title">explorador</span>
 
+      <!-- ── PANEL DE PROYECTOS ── -->
+      <div class="proyectos-panel">
+
+        <div class="proyectos-header">
+          <span class="sidebar-title">proyectos</span>
+          <div class="sidebar-actions">
+            <button class="icon-btn" (click)="nuevoProyecto()" title="Nuevo proyecto">
+              <span class="material-icons">add</span>
+            </button>
+            <button class="icon-btn" (click)="abrirProyecto()" title="Importar ZIP como proyecto">
+              <span class="material-icons">folder_open</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="proyectos-lista">
+          <div
+            *ngFor="let p of proyectos.proyectos"
+            class="proyecto-item"
+            [class.proyecto-activo]="p.id === proyectos.proyectoActivoId"
+            (click)="seleccionarProyecto(p.id)"
+            title="{{ p.nombre }} — modificado {{ p.fechaModificacion | date:'dd/MM HH:mm' }}"
+          >
+            <span class="material-icons proyecto-icon">
+              {{ p.id === proyectos.proyectoActivoId ? 'bolt' : 'folder' }}
+            </span>
+            <span class="proyecto-nombre">{{ p.nombre }}</span>
+            <span class="proyecto-fecha">{{ p.fechaModificacion | date:'HH:mm' }}</span>
+            <button
+              class="proyecto-eliminar"
+              (click)="eliminarProyecto($event, p.id)"
+              title="Eliminar proyecto"
+            >
+              <span class="material-icons">close</span>
+            </button>
+          </div>
+
+          <!-- Estado vacío -->
+          <div class="proyectos-vacio" *ngIf="proyectos.proyectos.length === 0">
+            <span class="material-icons">inbox</span>
+            <span>Sin proyectos</span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ── SEPARADOR ── -->
+      <div class="sidebar-sep"></div>
+
+      <!-- ── EXPLORADOR DE ARCHIVOS ── -->
+      <div class="sidebar-header">
+        <span class="sidebar-title">
+          explorador
+          <span class="sidebar-proyecto-nombre" *ngIf="proyectos.proyectoActivo">
+            — {{ proyectos.proyectoActivo.nombre }}
+          </span>
+        </span>
         <div class="sidebar-actions">
-          <button class="icon-btn" (click)="colapsarTodo()">
+          <button class="icon-btn" (click)="colapsarTodo()" title="Colapsar todo">
             <span class="material-icons">unfold_less</span>
           </button>
-
-          <button class="icon-btn" (click)="expandirTodo()">
+          <button class="icon-btn" (click)="expandirTodo()" title="Expandir todo">
             <span class="material-icons">unfold_more</span>
           </button>
         </div>
       </div>
 
-      <div class="tree">
+      <div class="tree" *ngIf="proyectos.proyectoActivo; else sinProyecto">
         <ul>
           <ng-container *ngFor="let nodo of arbol">
-            <ng-template [ngTemplateOutlet]="nodoTemplate" [ngTemplateOutletContext]="{ nodo: nodo, lista: arbol }">
+            <ng-template
+              [ngTemplateOutlet]="nodoTemplate"
+              [ngTemplateOutletContext]="{ nodo: nodo, lista: arbol }">
             </ng-template>
           </ng-container>
         </ul>
       </div>
+
+      <ng-template #sinProyecto>
+        <div class="sin-proyecto-msg">
+          <span class="material-icons">add_circle_outline</span>
+          <span>Crea o abre un proyecto</span>
+        </div>
+      </ng-template>
+
     </div>
 
     <!-- EDITOR -->
@@ -91,15 +151,15 @@
         <span class="no-tab-msg" *ngIf="editor.pestanasAbiertas.length === 0">
           abre un archivo para editar
         </span>
-
-        <div *ngFor="let tab of editor.pestanasAbiertas" class="tab"
-          [class.active]="editor.archivoActual?.nombre === tab.nombre" [style.border-top-color]="editor.archivoActual?.nombre === tab.nombre 
-              ? fileTree.getColor(tab.nombre) : 'transparent'" (click)="switchTab(tab)">
-
-          <span [style.color]="fileTree.getColor(tab.nombre)">
-            {{ tab.nombre }}
-          </span>
-
+        <div
+          *ngFor="let tab of editor.pestanasAbiertas"
+          class="tab"
+          [class.active]="editor.archivoActual?.nombre === tab.nombre"
+          [style.border-top-color]="editor.archivoActual?.nombre === tab.nombre
+            ? fileTree.getColor(tab.nombre) : 'transparent'"
+          (click)="switchTab(tab)"
+        >
+          <span [style.color]="fileTree.getColor(tab.nombre)">{{ tab.nombre }}</span>
           <button class="tab-close" (click)="cerrarTab($event, tab)">
             <span class="material-icons">close</span>
           </button>
@@ -108,80 +168,61 @@
 
       <!-- ACTION BAR -->
       <div class="editor-actions-bar" *ngIf="editor.archivoActual">
-
         <span class="editor-lang-badge" [style.color]="fileTree.getColor(editor.archivoActual.nombre)">
           {{ fileTree.getLang(editor.archivoActual.nombre) }}
         </span>
-
-        <button class="editor-action-btn" (click)="editor.autoIndentar()">
+        <button class="editor-action-btn" (click)="editor.autoIndentar()" title="Auto-indentar">
           <span class="material-icons">format_indent_increase</span>
         </button>
-
-        <button class="editor-action-btn" *ngIf="editor.archivoActual.nombre.endsWith('.y')"
-          (click)="editor.validarImports(arbol)">
+        <button
+          class="editor-action-btn"
+          *ngIf="editor.archivoActual.nombre.endsWith('.y')"
+          (click)="editor.validarImports(arbol)"
+          title="Validar imports"
+        >
           <span class="material-icons">link</span>
         </button>
-
         <div class="import-errors-badge" *ngIf="editor.importErrors.length > 0" (click)="mostrarErroresImport()">
           ⚠ {{ editor.importErrors.length }}
         </div>
-
-        <span class="editor-chars">
-          {{ editor.contenido.length }} chars
-        </span>
-
+        <span class="editor-chars">{{ editor.contenido.length }} chars</span>
       </div>
 
       <!-- EDITOR BODY -->
       <div class="editor-body">
-
-        <!-- LINE NUMBERS -->
         <div class="line-numbers" #lineNums>
-          <div *ngFor="let n of editor.lineas" [class.line-error]="editor.tieneErrorImport(n)" class="line-number-item">
-            {{ n }}
-          </div>
+          <div
+            *ngFor="let n of editor.lineas"
+            [class.line-error]="editor.tieneErrorImport(n)"
+            class="line-number-item"
+          >{{ n }}</div>
         </div>
-        <!-- CODE -->
         <div class="code-wrapper" #wrapper>
-
-          <!-- CAPA DE RESALTADO -->
           <pre class="code-highlight-layer" #highlightLayer [innerHTML]="editor.codigoColoreado"></pre>
-
-          <!-- TEXTAREA -->
-          <textarea #textarea class="code-editor-transparent" [(ngModel)]="editor.contenido" (input)="onEdit()"
+          <textarea
+            #textarea
+            class="code-editor-transparent"
+            [(ngModel)]="editor.contenido"
+            (input)="onEdit()"
             (scroll)="editor.syncScroll(textarea, lineNums, highlightLayer)"
-            (keydown)="handleKeydown($event)" (keyup)="updatePos(textarea)" (click)="updatePos(textarea)"
-            spellcheck="false">
-</textarea>
-
+            (keydown)="handleKeydown($event)"
+            (keyup)="updatePos(textarea)"
+            (click)="updatePos(textarea)"
+            spellcheck="false"
+          ></textarea>
         </div>
-
       </div>
 
       <!-- IMPORT ERRORS PANEL -->
       <div class="import-errors-panel" *ngIf="editor.importErrors.length > 0">
-
         <div class="import-errors-header">
           <span>Errores de import</span>
-          <button class="import-close-btn" (click)="editor.importErrors = []">
-            ✕
-          </button>
+          <button class="import-close-btn" (click)="editor.importErrors = []">✕</button>
         </div>
-
         <div class="import-error-item" *ngFor="let err of editor.importErrors">
-
-          <span class="import-err-linea">
-            Línea {{ err.linea }}
-          </span>
-
-          <span class="import-err-ruta">
-            {{ err.ruta }}
-          </span>
-
-          <span class="import-err-msg">
-            {{ err.mensaje }}
-          </span>
-
+          <span class="import-err-linea">Línea {{ err.linea }}</span>
+          <span class="import-err-ruta">{{ err.ruta }}</span>
+          <span class="import-err-msg">{{ err.mensaje }}</span>
         </div>
       </div>
 
@@ -190,16 +231,13 @@
 
   <!-- BOTTOM -->
   <div class="bottombar">
-
     <div class="bottombar-tabs">
       <div class="btab" [class.active]="consolaMode === 'console'" (click)="consolaMode = 'console'">
         consola
       </div>
-
       <div class="btab" [class.active]="consolaMode === 'errors'" (click)="consolaMode = 'errors'">
         errores {{ compiler.errores.length }}
       </div>
-
       <div class="btab" [class.active]="consolaMode === 'terminal'" (click)="consolaMode = 'terminal'">
         terminal
       </div>
@@ -212,14 +250,12 @@
 
     <!-- ERRORES -->
     <div class="console-out errors-container" *ngIf="consolaMode === 'errors'">
-
       <div class="errors-header" *ngIf="compiler.errores.length > 0">
         <span class="errors-title">
           <span class="error-icon">⚠</span>
           Se encontraron {{ compiler.errores.length }} error(es)
         </span>
       </div>
-
       <div class="errors-wrapper" *ngIf="compiler.errores.length > 0">
         <table class="error-table">
           <thead>
@@ -233,58 +269,57 @@
             </tr>
           </thead>
           <tbody>
-            <tr *ngFor="let e of compiler.errores; let i = index" class="error-row"
-              [ngClass]="'row-' + e.tipo.toLowerCase().replace('á', 'a').replace('í', 'i')">
+            <tr
+              *ngFor="let e of compiler.errores; let i = index"
+              class="error-row"
+              [ngClass]="'row-' + e.tipo.toLowerCase().replace('á','a').replace('í','i')"
+            >
               <td class="cell-num">{{ i + 1 }}</td>
               <td class="cell-tipo">
                 <span class="err-badge" [ngClass]="{
-                        'badge-lexico': e.tipo === 'Léxico',
-                        'badge-sintactico': e.tipo === 'Sintáctico',
-                        'badge-semantico': e.tipo === 'Semántico'
-                      }">
-                  {{ e.tipo }}
-                </span>
+                  'badge-lexico':    e.tipo === 'Léxico',
+                  'badge-sintactico': e.tipo === 'Sintáctico',
+                  'badge-semantico': e.tipo === 'Semántico'
+                }">{{ e.tipo }}</span>
               </td>
               <td class="cell-linea">{{ e.linea }}</td>
               <td class="cell-columna">{{ e.columna }}</td>
-              <td class="cell-lexema">
-                <code>{{ e.lexema }}</code>
-              </td>
+              <td class="cell-lexema"><code>{{ e.lexema }}</code></td>
               <td class="cell-desc">{{ e.descripcion }}</td>
             </tr>
           </tbody>
         </table>
       </div>
-
       <div *ngIf="compiler.errores.length === 0" class="no-errors-msg">
         <span class="success-icon">✔</span>
         <span>No hay errores</span>
       </div>
-
     </div>
 
     <!-- TERMINAL -->
     <div class="terminal-container" *ngIf="consolaMode === 'terminal'">
-
       <div class="terminal-body" #terminalBody>
-        <div *ngFor="let linea of terminal.terminalLineas" class="term-line" [class.term-input]="linea.tipo === 'input'"
-          [class.term-output]="linea.tipo === 'output'" [class.term-error]="linea.tipo === 'error'"
-          [class.term-info]="linea.tipo === 'info'">
-          {{ linea.texto }}
-        </div>
+        <div
+          *ngFor="let linea of terminal.terminalLineas"
+          class="term-line"
+          [class.term-input]="linea.tipo === 'input'"
+          [class.term-output]="linea.tipo === 'output'"
+          [class.term-error]="linea.tipo === 'error'"
+          [class.term-info]="linea.tipo === 'info'"
+        >{{ linea.texto }}</div>
       </div>
-
       <div class="terminal-input-row">
         <span class="terminal-prompt">></span>
-
-        <input class="terminal-input" [(ngModel)]="terminal.terminalCmd" (keydown)="terminal.keydown($event)"
-          placeholder="Escribe un comando..." />
-
+        <input
+          class="terminal-input"
+          [(ngModel)]="terminal.terminalCmd"
+          (keydown)="terminal.keydown($event)"
+          placeholder="Escribe un comando DBA..."
+        />
         <button class="terminal-run-btn" (click)="terminal.ejecutar()">
           <span class="material-icons">subdirectory_arrow_right</span>
         </button>
       </div>
-
     </div>
 
   </div>
@@ -292,14 +327,14 @@
   <!-- STATUS -->
   <div class="statusbar">
     <span>{{ editor.archivoActual?.nombre || 'sin archivo' }}</span>
-
+    <span class="status-proyecto" *ngIf="proyectos.proyectoActivo">
+      <span class="material-icons" style="font-size:12px">bolt</span>
+      {{ proyectos.proyectoActivo.nombre }}
+    </span>
     <span [style.color]="editor.archivoActual ? fileTree.getColor(editor.archivoActual.nombre) : ''">
       {{ editor.archivoActual ? fileTree.getLang(editor.archivoActual.nombre) : '—' }}
     </span>
-
-    <span class="status-pos">
-      {{ editor.cursorPos }}
-    </span>
+    <span class="status-pos">{{ editor.cursorPos }}</span>
   </div>
 
 </div>
@@ -307,41 +342,32 @@
 <!-- TEMPLATE NODO -->
 <ng-template #nodoTemplate let-nodo="nodo" let-lista="lista">
   <li>
-
     <div class="tree-row" (click)="clickNodo(nodo)">
-
       <span class="material-icons item-icon" [style.color]="fileTree.getColor(nodo.nombre)">
         {{ fileTree.getIcon(nodo) }}
       </span>
-
       <span class="item-name" [style.color]="nodo.tipo === 'archivo' ? fileTree.getColor(nodo.nombre) : ''">
         {{ nodo.nombre }}
       </span>
-
       <div class="row-btns">
-
         <button class="row-btn" *ngIf="nodo.tipo === 'carpeta'" (click)="crearArchivoEn($event, nodo)">
           <span class="material-icons">note_add</span>
         </button>
-
         <button class="row-btn" *ngIf="nodo.tipo === 'carpeta'" (click)="crearCarpetaEn($event, nodo)">
           <span class="material-icons">create_new_folder</span>
         </button>
-
         <button class="row-btn delete" (click)="eliminar($event, nodo, lista)">
           <span class="material-icons">delete</span>
         </button>
-
       </div>
-
     </div>
-
     <ul *ngIf="nodo.tipo === 'carpeta' && nodo.open">
       <ng-container *ngFor="let hijo of nodo.hijos">
-        <ng-template [ngTemplateOutlet]="nodoTemplate" [ngTemplateOutletContext]="{ nodo: hijo, lista: nodo.hijos }">
+        <ng-template
+          [ngTemplateOutlet]="nodoTemplate"
+          [ngTemplateOutletContext]="{ nodo: hijo, lista: nodo.hijos }">
         </ng-template>
       </ng-container>
     </ul>
-
   </li>
 </ng-template>

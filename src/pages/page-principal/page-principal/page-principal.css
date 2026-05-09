@@ -853,3 +853,136 @@
   font-size: 18px;
   font-weight: bold;
 }
+
+/* ── Panel de proyectos ── */
+.proyectos-panel {
+  border-bottom: 1px solid var(--surface2);
+  padding-bottom: 4px;
+}
+
+.proyectos-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+}
+
+.proyectos-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 6px 4px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.proyecto-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--subtext0);
+  transition: background 0.15s;
+}
+
+.proyecto-item:hover { background: var(--surface1); }
+
+.proyecto-activo {
+  background: var(--surface1);
+  color: var(--text);
+  border-left: 2px solid #f9e2af;
+}
+
+.proyecto-icon { font-size: 14px; color: #f9e2af; }
+.proyecto-activo .proyecto-icon { color: #f9e2af; }
+
+.proyecto-nombre {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.proyecto-fecha {
+  font-size: 10px;
+  color: var(--overlay0);
+  flex-shrink: 0;
+}
+
+.proyecto-eliminar {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--overlay0);
+  padding: 0;
+  display: flex;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.proyecto-item:hover .proyecto-eliminar { opacity: 1; }
+.proyecto-eliminar:hover { color: #f38ba8; }
+.proyecto-eliminar .material-icons { font-size: 14px; }
+
+.proyectos-vacio {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px;
+  color: var(--overlay0);
+  font-size: 11px;
+}
+
+.proyectos-vacio .material-icons { font-size: 20px; }
+
+/* ── Separador entre proyectos y explorador ── */
+.sidebar-sep {
+  height: 1px;
+  background: var(--surface2);
+  margin: 4px 0;
+}
+
+/* ── Nombre del proyecto activo en explorador ── */
+.sidebar-proyecto-nombre {
+  font-size: 10px;
+  color: var(--overlay1);
+  font-weight: normal;
+}
+
+/* ── Sin proyecto seleccionado ── */
+.sin-proyecto-msg {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 24px 12px;
+  color: var(--overlay0);
+  font-size: 11px;
+}
+
+.sin-proyecto-msg .material-icons { font-size: 28px; }
+
+/* ── Proyecto activo en toolbar ── */
+.toolbar-proyecto-activo {
+  font-size: 11px;
+  color: #f9e2af;
+  padding: 0 8px;
+  opacity: 0.8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+
+/* ── Proyecto activo en statusbar ── */
+.status-proyecto {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  color: #f9e2af;
+  font-size: 11px;
+}

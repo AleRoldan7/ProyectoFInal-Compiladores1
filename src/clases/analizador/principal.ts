@@ -4,12 +4,11 @@ import { RenderizadorComponentes } from './render-componentes';
 
 const BREAK    = '##BREAK##';
 const CONTINUE = '##CONTINUE##';
-const LOAD     = '##LOAD##';   // señal especial para detener y recargar
+const LOAD     = '##LOAD##';  
 
 export class Principal {
 
-  // SqliteService se inyecta desde fuera para poder ejecutar DBA
-  // El callback onLoad se llama cuando se encuentra un `load "archivo.y"`
+  
   private sqlite: any = null;
   private onLoad: ((destino: string, esArchivo: boolean) => string) | null = null;
 
@@ -19,26 +18,22 @@ export class Principal {
     private renderComp: RenderizadorComponentes
   ) {}
 
-  // ─── Inyectar SqliteService desde CodigoCompiladoService ─────────────────
   setSqlite(sqlite: any): void {
     this.sqlite = sqlite;
   }
 
-  // ─── Inyectar callback para manejar load ─────────────────────────────────
   setOnLoad(fn: (destino: string, esArchivo: boolean) => string): void {
     this.onLoad = fn;
   }
+  
 
-  // ─── Punto de entrada principal ──────────────────────────────────────────
   ejecutar(nodo: any): string {
-    // Registrar funciones declaradas en la tabla de símbolos
     for (const dec of (nodo.declaraciones || [])) {
       this.ejecutarDeclaracion(dec);
     }
     return this.ejecutarBloque(nodo.main || []);
   }
 
-  // ─── Ejecutar bloque de instrucciones ────────────────────────────────────
   ejecutarBloque(instrucciones: any[]): string {
     if (!Array.isArray(instrucciones)) return '';
     let html = '';
@@ -50,7 +45,6 @@ export class Principal {
     return html;
   }
 
-  // ─── Despachar instrucción ────────────────────────────────────────────────
   private ejecutarInstruccion(nodo: any): string {
     if (!nodo) return '';
 
@@ -70,15 +64,12 @@ export class Principal {
         this.ejecutarAsignacion(nodo);
         return '';
 
-      // ── execute `consulta DBA` sin asignación (INSERT, UPDATE, DELETE, CREATE) ──
       case 'execute_dba':
         return this.ejecutarDBA(nodo.consulta);
 
-      // ── llamada a función declarada con @nombreFuncion(args) ──
       case 'llamada_funcion':
         return this.ejecutarLlamadaFuncion(nodo);
 
-      // ── load variable o archivo ──
       case 'load':
         return this.ejecutarLoad(nodo);
 
@@ -97,7 +88,6 @@ export class Principal {
     }
   }
 
-  // ─── Declaraciones (variables, arrays, execute SELECT, funciones) ─────────
   ejecutarDeclaracion(dec: any): void {
     if (!dec) return;
 
@@ -120,31 +110,26 @@ export class Principal {
         break;
       }
 
-      // float[] x = execute `tabla.columna`  → SELECT que llena un array
-      // float   x = execute `tabla.columna`  → SELECT que toma el primer valor
+      
       case 'declaracion_execute': {
         const resultado = this.ejecutarSelectConsulta(dec.consulta);
         if (dec.subtipo === 'select_scalar') {
-          // Valor escalar: primer elemento del resultado
           const primero = Array.isArray(resultado) ? (resultado[0] ?? null) : resultado;
           this.tabla.set(dec.nombre, dec.tipo_dato, primero);
         } else {
-          // Array completo
           this.tabla.set(dec.nombre, dec.tipo_dato + '[]', Array.isArray(resultado) ? resultado : []);
         }
         break;
       }
 
       case 'funcion': {
-        // Guardar la función en la tabla para poder llamarla con @nombre()
         this.tabla.set(dec.nombre, 'function', dec);
         break;
       }
     }
   }
 
-  // ─── SELECT desde execute backtick ───────────────────────────────────────
-  // Formato esperado: `tabla.columna`  (igual que en .dba)
+  
   private ejecutarSelectConsulta(consulta: string): any[] {
   if (!this.sqlite) {
     console.warn('[Principal] SqliteService no disponible para execute SELECT');
@@ -192,13 +177,7 @@ export class Principal {
   return [];
 }
 
-  // ─── execute DBA sin asignación (INSERT, UPDATE, DELETE, CREATE) ──────────
-  // Formato dentro del backtick:
-  //   tabla[col=$val, col2=$val2]             → INSERT
-  //   tabla[col=$val, col2=$val2] IN $id      → UPDATE
-  //   tabla DELETE $id                        → DELETE
-  //   TABLE nombre COLUMNS col=tipo, ...      → CREATE
-  //   tabla.columna                           → SELECT (sin asignación, solo refresca tabla)
+
   private ejecutarDBA(consulta: string): string {
     if (!this.sqlite) {
       console.warn('[Principal] SqliteService no disponible para execute DBA');
@@ -208,7 +187,6 @@ export class Principal {
     const consultaResuelta = this.resolverVariablesEnConsulta(consulta);
 
     try {
-      // Detectar tipo de operación por estructura del string
       const nodo = this.parsearConsultaDBA(consultaResuelta);
       if (!nodo) {
         console.warn('[Principal] No se pudo parsear la consulta DBA:', consultaResuelta);
@@ -235,12 +213,9 @@ export class Principal {
     return '';
   }
 
-  // ─── Parser manual de consultas DBA dentro de backtick ───────────────────
-  // Convierte el string de la consulta en un nodo compatible con sqlite.nodoASQL()
   private parsearConsultaDBA(consulta: string): any | null {
     const s = consulta.trim();
 
-    // ── SELECT: tabla.columna ──
     if (!s.includes('[') && !s.toUpperCase().includes('DELETE') && !s.toUpperCase().includes('TABLE')) {
       const partes = s.split('.');
       if (partes.length === 2) {
@@ -248,7 +223,6 @@ export class Principal {
       }
     }
 
-    // ── CREATE: TABLE nombre COLUMNS col=tipo, ... ──
     if (s.toUpperCase().startsWith('TABLE')) {
       const sinTable = s.substring(5).trim();
       const idxCols  = sinTable.toUpperCase().indexOf('COLUMNS');
@@ -263,13 +237,11 @@ export class Principal {
       }
     }
 
-    // ── DELETE: tabla DELETE id ──
     const matchDelete = s.match(/^(\w+)\s+DELETE\s+(\d+)$/i);
     if (matchDelete) {
       return { tipo: 'delete', tabla: matchDelete[1], id: parseInt(matchDelete[2]) };
     }
 
-    // ── UPDATE: tabla[col=val, ...] IN id ──
     const matchUpdate = s.match(/^(\w+)\[(.+)\]\s+IN\s+(\d+)$/i);
     if (matchUpdate) {
       return {
@@ -280,7 +252,6 @@ export class Principal {
       };
     }
 
-    // ── INSERT: tabla[col=val, ...] ──
     const matchInsert = s.match(/^(\w+)\[(.+)\]$/);
     if (matchInsert) {
       return {
@@ -293,14 +264,12 @@ export class Principal {
     return null;
   }
 
-  // Parsea "col=val, col2=val2" en [{ col, val }]
   private parsearAsignaciones(str: string): { col: string; val: any }[] {
     return str.split(',').map(par => {
       const idx = par.indexOf('=');
       if (idx === -1) return { col: par.trim(), val: null };
       const col = par.substring(0, idx).trim();
       let   val: any = par.substring(idx + 1).trim();
-      // Quitar comillas si es string
       if ((val.startsWith('"') && val.endsWith('"')) ||
           (val.startsWith("'") && val.endsWith("'"))) {
         val = val.slice(1, -1);
@@ -311,8 +280,6 @@ export class Principal {
     });
   }
 
-  // ─── Resolver variables $nombre en el string de la consulta ──────────────
-  // Ej: "myPokemon[$pp=$pp, atack=$atack] IN $id"  →  "myPokemon[pp=25, atack=80] IN 3"
   private resolverVariablesEnConsulta(consulta: string): string {
     let resultado = '';
     let i = 0;
@@ -334,11 +301,9 @@ export class Principal {
     return resultado;
   }
 
-  // ─── Llamada a función declarada: @updatePokemon(25, 80, 3, "main.y") ────
   private ejecutarLlamadaFuncion(nodo: any): string {
     const fnDec = this.tabla.get(nodo.nombre);
     if (!fnDec || fnDec.tipo !== 'function') {
-      // Buscar en declaraciones globales también
       console.warn('[Principal] Función no encontrada:', nodo.nombre);
       return '';
     }
@@ -346,7 +311,6 @@ export class Principal {
     const fn: any = this.tabla.getEntrada(nodo.nombre)?.valor;
     if (!fn) return '';
 
-    // Guardar scope actual y crear scope local con los parámetros
     const scopeAnterior = this.tabla.clonar();
 
     const params: any[] = fn.params || [];
@@ -356,12 +320,10 @@ export class Principal {
       this.tabla.set(param.nombre, param.tipo, valorArg);
     });
 
-    // Ejecutar el cuerpo de la función
     let html = '';
     for (const inst of (fn.cuerpo || [])) {
       const res = this.ejecutarInstruccion(inst);
       if (res === LOAD) {
-        // Propagar la señal de load hacia arriba
         this.tabla.restaurar(scopeAnterior);
         return LOAD;
       }
@@ -372,14 +334,10 @@ export class Principal {
     return html;
   }
 
-  // ─── load ─────────────────────────────────────────────────────────────────
-  // load "archivo.y"  → re-ejecuta ese archivo desde cero
-  // load goTo         → evalúa la variable goTo y usa su valor como ruta
-  // load $goTo        → igual
+
   private ejecutarLoad(nodo: any): string {
     let destino = nodo.destino;
 
-    // Si es una variable, resolver su valor
     if (nodo.esVar || !nodo.esArchivo) {
       const val = this.tabla.get(destino);
       if (val !== null && val !== undefined) {
@@ -388,7 +346,6 @@ export class Principal {
     }
 
     if (this.onLoad) {
-      // Delegar al CodigoCompiladoService para manejar la recarga
       return this.onLoad(destino, nodo.esArchivo || destino.includes('.'));
     }
 
@@ -396,14 +353,12 @@ export class Principal {
     return '';
   }
 
-  // ─── Mostrar alerta en el navegador ante error DBA ───────────────────────
   private mostrarAlertaError(mensaje: string): void {
     if (typeof window !== 'undefined' && window.alert) {
       window.alert('Error de ejecución:\n' + mensaje);
     }
   }
 
-  // ─── Asignación ──────────────────────────────────────────────────────────
   private ejecutarAsignacion(nodo: any): void {
     if (!nodo) return;
 
@@ -422,7 +377,6 @@ export class Principal {
     this.tabla.set(nodo.nombre, actual?.tipo || 'auto', valor);
   }
 
-  // ─── Ciclos ───────────────────────────────────────────────────────────────
   private ejecutarWhile(nodo: any): string {
     let html  = '';
     let guard = 0;
@@ -467,7 +421,6 @@ export class Principal {
     return html;
   }
 
-  // ─── Condicionales ────────────────────────────────────────────────────────
   private ejecutarIf(nodo: any): string {
     if (this.evaluador.evaluar(nodo.condicion)) {
       return this.ejecutarBloque(nodo.entonces);

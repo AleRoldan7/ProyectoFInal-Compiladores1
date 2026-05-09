@@ -8,6 +8,8 @@ import { ArbolService } from '../../../service/arbol/arbol.service';
 import { CodigoCompiladoService } from '../../../service/validacion-codigo/codigo-compilado.service';
 import { TerminalService } from '../../../service/terminal/terminal.service';
 import { DbaService } from '../../../service/dba/dba.service';
+import { SqliteService } from '../../../service/sql/sqlite.service';
+import { ProyectoService } from '../../../service/proyecto/proyecto.service';
 
 
 export interface ErrorReporte {
@@ -33,43 +35,125 @@ export class PagePrincipal {
   @ViewChild('terminalBody') terminalBody!: ElementRef<HTMLDivElement>;
   @ViewChild('lineNums') lineNums!: ElementRef<HTMLDivElement>;
 
-  arbol: NodoArchivo[] = [
-    {
-      nombre: 'src', tipo: 'carpeta', open: true,
-      hijos: [
-        {
-          nombre: 'assets', tipo: 'carpeta', open: false,
-          hijos: [
-            {
-              nombre: 'styles', tipo: 'carpeta', open: false, hijos: [
-                { nombre: 'main.styles', tipo: 'archivo', contenido: '/* estilos globales */' }
-              ]
-            },
-          ]
-        },
-        {
-          nombre: 'pages', tipo: 'carpeta', open: true,
-          hijos: [
-            {
-              nombre: 'about', tipo: 'carpeta', open: false, hijos: [
-                { nombre: 'about.comp', tipo: 'archivo', contenido: 'AboutComponent(){\n    [\n        T("Bienvenido")\n    ]\n}' }
-              ]
-            }
-          ]
-        },
-        { nombre: 'index.y', tipo: 'archivo', contenido: 'import "./pages/about/about.comp";\n\nmain {\n    @AboutComponent();\n}' },
-        { nombre: 'db.dba', tipo: 'archivo', contenido: 'TABLE users COLUMNS name=string, age=int;\nusers[name="Alice", age=25];\nusers.name;' }
-      ]
-    }
-  ];
 
-  consolaMode: 'console' | 'errors' | 'terminal' = 'console';
+  consolaMode: 'console' | 'errors' | 'terminal' | 'debug' = 'console';
+  consolaDebug: string[] = [];
+  private sql = new SqliteService();
 
-  constructor(public editor: PestanasService,  public fileTree: ArbolService, public compiler: CodigoCompiladoService, public terminal: TerminalService,
+  constructor(
+    public editor: PestanasService,
+    public fileTree: ArbolService,
+    public compiler: CodigoCompiladoService,
+    public terminal: TerminalService,
     public dbViewer: DbaService,
+    public proyectos: ProyectoService,
     private cdr: ChangeDetectorRef
   ) {
     this.terminal.init();
+    this.interceptarConsola();
+
+    if (this.proyectos.proyectos.length === 0) {
+      this.proyectos.crearProyecto('Mi Proyecto');
+    }
+  }
+
+  get arbol(): NodoArchivo[] {
+    return this.proyectos.arbolActivo;
+  }
+
+
+  private interceptarConsola() {
+    const original = {
+      log: console.log,
+      error: console.error,
+      warn: console.warn,
+      info: console.info
+    };
+
+    console.log = (...args: any[]) => {
+      original.log(...args);
+      this.agregarMensajeDebug('LOG', args.join(' '));
+    };
+
+    console.error = (...args: any[]) => {
+      original.error(...args);
+      this.agregarMensajeDebug('ERROR', args.join(' '));
+    };
+
+    console.warn = (...args: any[]) => {
+      original.warn(...args);
+      this.agregarMensajeDebug('WARN', args.join(' '));
+    };
+
+    console.info = (...args: any[]) => {
+      original.info(...args);
+      this.agregarMensajeDebug('INFO', args.join(' '));
+    };
+  }
+
+  nuevoProyecto() {
+    Swal.fire({
+      title: 'Nuevo proyecto',
+      input: 'text',
+      inputPlaceholder: 'Nombre del proyecto',
+      showCancelButton: true,
+      confirmButtonText: 'Crear',
+      inputValidator: v => !v ? 'El nombre es obligatorio' : null
+    }).then(r => {
+      if (!r.isConfirmed) return;
+      this.proyectos.crearProyecto(r.value);
+      // Cerrar tabs del proyecto anterior
+      this.editor.pestanasAbiertas = [];
+      this.editor.archivoActual = null;
+      this.editor.contenido = '';
+      this.editor.updateLineNums();
+      this.cdr.detectChanges();
+    });
+  }
+
+  seleccionarProyecto(id: string) {
+    this.proyectos.seleccionar(id);
+    // Limpiar tabs al cambiar de proyecto
+    this.editor.pestanasAbiertas = [];
+    this.editor.archivoActual = null;
+    this.editor.contenido = '';
+    this.editor.updateLineNums();
+    this.cdr.detectChanges();
+  }
+
+  eliminarProyecto(e: Event, id: string) {
+    e.stopPropagation();
+    Swal.fire({
+      icon: 'warning',
+      title: '¿Eliminar proyecto?',
+      text: 'Se perderán todos los archivos.',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, eliminar',
+      confirmButtonColor: '#e63946'
+    }).then(r => {
+      if (!r.isConfirmed) return;
+      this.proyectos.eliminar(id);
+      this.editor.pestanasAbiertas = [];
+      this.editor.archivoActual = null;
+      this.editor.contenido = '';
+      this.cdr.detectChanges();
+    });
+  }
+
+  private agregarMensajeDebug(tipo: string, mensaje: string) {
+    const timestamp = new Date().toLocaleTimeString();
+    const msg = `[${timestamp}] [${tipo}] ${mensaje}`;
+    this.consolaDebug.push(msg);
+
+    if (this.consolaDebug.length > 100) {
+      this.consolaDebug.shift();
+    }
+
+    this.cdr.detectChanges();
+  }
+
+  limpiarDebug() {
+    this.consolaDebug = [];
   }
 
 
@@ -84,7 +168,7 @@ export class PagePrincipal {
     const archivo = this.fileTree.clickNodo(nodo);
     if (archivo) {
       this.editor.abrirTab(archivo, this.arbol);
-      this.cdr.detectChanges();   
+      this.cdr.detectChanges();
     }
   }
 
@@ -127,11 +211,20 @@ export class PagePrincipal {
 
   abrirProyecto() {
     this.fileTree.abrirProyecto((nuevoArbol) => {
-      this.arbol = nuevoArbol;
-      this.editor.pestanasAbiertas = [];
-      this.editor.archivoActual = null;
-      this.editor.contenido = '';
-      this.editor.updateLineNums();
+      Swal.fire({
+        title: 'Nombre del proyecto',
+        input: 'text',
+        inputPlaceholder: 'Mi proyecto importado',
+        showCancelButton: true,
+        confirmButtonText: 'Importar'
+      }).then(r => {
+        const nombre = r.value || 'Proyecto importado';
+        this.proyectos.importarArbol(nombre, nuevoArbol);
+        this.editor.pestanasAbiertas = [];
+        this.editor.archivoActual = null;
+        this.editor.contenido = '';
+        this.cdr.detectChanges();
+      });
     });
   }
 
@@ -147,8 +240,10 @@ export class PagePrincipal {
 
   onEdit() {
     this.editor.onEdit(this.arbol);
+    this.proyectos.marcarModificado();
     this.cdr.detectChanges();
   }
+
 
   handleKeydown(e: KeyboardEvent) {
     this.editor.handleKeydown(e, this.arbol);
@@ -199,8 +294,11 @@ export class PagePrincipal {
     this.consolaMode = await this.compiler.ejecutar(this.arbol);
     if (this.compiler.errores.length > 0) {
       this.consolaMode = 'errors';
+      Swal.fire({ icon: 'error', title: 'Error en compilación', text: 'El código tuvo fallos' });
     }
   }
+
+
 
   cargarArchivos() {
     const inp = document.createElement('input');
@@ -252,7 +350,7 @@ export class PagePrincipal {
       Swal.fire({
         icon: 'error',
         title: 'Error',
-        text: 'No se pudo abrir ventana. Verifica los bloqueadores de popup.'
+        text: 'No se pudo abrir ventana'
       });
       return;
     }
@@ -308,6 +406,21 @@ export class PagePrincipal {
     });
   }
 
+  limpiarBD() {
+    Swal.fire({
+      icon: 'warning',
+      title: '¿Limpiar base de datos?',
+      text: 'Se borrarán todos los datos guardados. Esta acción no se puede deshacer.',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, limpiar',
+      cancelButtonText: 'Cancelar'
+    }).then(r => {
+      if (r.isConfirmed) {
+        this.sql.reiniciar();
+        Swal.fire('Listo', 'BD limpiada correctamente', 'success');
+      }
+    });
+  }
   verBaseDeDatos() {
     this.dbViewer.verBaseDeDatos();
   }

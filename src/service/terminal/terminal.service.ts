@@ -2,6 +2,7 @@ import { ElementRef, Injectable } from '@angular/core';
 
 import * as parserDBA from '../../analisisis-jison/analizador-dba.js';
 import { SqliteService } from '../sql/sqlite.service.js';
+import { ManejoErrores } from '../../clases/manejo-errores/errores.js';
 
 export interface LineaTerminal {
   texto: string;
@@ -188,8 +189,34 @@ export class TerminalService {
   private ejecutarDBA(cmd: string) {
     try {
       const cmdConPuntoComa = cmd.endsWith(';') ? cmd : cmd + ';';
-      const ast = parserDBA.parser.parse(cmdConPuntoComa);
-      const sentencias = Array.isArray(ast) ? ast : [ast];
+
+      const manejador = new ManejoErrores();
+      manejador.reset();
+      parserDBA.parser.yy = { manejador };
+      parserDBA.parser.parseError = (str: any, hash: any) => {
+        const linea = hash?.loc?.first_line ?? 0;
+        const col   = hash?.loc?.first_column ?? 0;
+        const lex   = hash?.token ?? '?';
+        manejador.errorSintactico(lex, linea, col, str);
+      };
+
+      const resultado = parserDBA.parser.parse(cmdConPuntoComa);
+
+      const ast = (resultado && typeof resultado === 'object' && 'ast' in resultado)
+        ? resultado.ast
+        : resultado;
+
+      const todosLosErrores = [
+        ...(resultado?.errores ?? []),
+        ...manejador.getErrores()
+      ];
+      if (todosLosErrores.length > 0) {
+        for (const err of todosLosErrores) {
+          this.termLog('error', `[Línea ${err.linea ?? err.line ?? 0}] ${err.descripcion ?? err.description ?? err}`);
+        }
+      }
+
+      const sentencias = Array.isArray(ast) ? ast : (ast ? [ast] : []);
 
       for (const s of sentencias) {
         if (!s?.tipo) continue;
@@ -203,7 +230,7 @@ export class TerminalService {
         } else {
           try {
             this.sqlite.ejecutarSQL(sql);
-            this.termLog('output', `✔ ${s.tipo.toUpperCase()} ejecutado en "${s.tabla}"`);
+            this.termLog('output', `${s.tipo.toUpperCase()} ejecutado en "${s.tabla}"`);
           } catch (e: any) {
             this.termLog('error', `Error: ${e.message}`);
           }

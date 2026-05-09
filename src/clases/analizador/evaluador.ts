@@ -30,7 +30,6 @@ export class Evaluador {
         return Array.isArray(arr) ? arr[idx] : null;
       }
 
-      // Template literal: `hola $nombre`  → interpolar
       case 'template':
         return this.interpolarSinRegex(expr.valor);
 
@@ -39,7 +38,6 @@ export class Evaluador {
     }
   }
 
-  // ─── Evaluar operación ────────────────────────────────────────────────────
   private evaluarOperacion(expr: any): any {
     if (expr.op === 'neg') return -this.evaluar(expr.val);
     if (expr.op === '!')   return !this.evaluar(expr.val);
@@ -69,7 +67,6 @@ export class Evaluador {
     }
   }
 
-  // ─── Verificar si un char es parte de un nombre de variable ──────────────
   private esNombreVar(c: string): boolean {
     const code = c.charCodeAt(0);
     return (code >= 48 && code <= 57)  ||  // 0-9
@@ -78,34 +75,28 @@ export class Evaluador {
            code === 95;                     // _
   }
 
-  // ─── Interpolar $variables en un string SIN regex ────────────────────────
-  // Maneja: "hola $nombre, tienes $edad años"
-  // También maneja expresiones entre backticks dentro del string: `$x + 1`
+  
   interpolarSinRegex(texto: string): string {
     let resultado = '';
     let i = 0;
 
     while (i < texto.length) {
-      // Backtick: evaluar expresión aritmética entre ``
       if (texto[i] === '`') {
         let expresion = '';
-        i++; // saltar el backtick de apertura
+        i++; 
         while (i < texto.length && texto[i] !== '`') {
           expresion += texto[i];
           i++;
         }
-        if (i < texto.length) i++; // saltar el backtick de cierre
-        // La expresión puede contener $vars → primero resolver las variables
+        if (i < texto.length) i++; 
         const exprResuelta = this.interpolarSinRegex(expresion.trim());
-        // Luego evaluar aritméticamente con Function (solo para expresiones numéricas)
         resultado += this.evaluarExprTexto(exprResuelta);
         continue;
       }
 
-      // Variable: $nombre
       if (texto[i] === '$') {
         let nombre = '';
-        i++; // saltar el $
+        i++; 
         while (i < texto.length && this.esNombreVar(texto[i])) {
           nombre += texto[i];
           i++;
@@ -126,14 +117,10 @@ export class Evaluador {
     return resultado;
   }
 
-  // ─── Evaluar expresión aritmética de texto ya con vars resueltas ─────────
-  // Solo se usa para el caso de backtick dentro de strings
-  // Ej: "25 + 10 + 0.5" → "35.5"
+  
   private evaluarExprTexto(expr: string): string {
-    // Sustitución de $vars ya hecha antes de llamar aquí
-    // Usar Function solo para evaluación numérica de la expresión ya resuelta
+    
     try {
-      // Verificar que solo hay caracteres seguros: números, operadores, espacios, punto
       let seguro = true;
       for (let i = 0; i < expr.length; i++) {
         const c = expr[i];
@@ -153,13 +140,11 @@ export class Evaluador {
         return String(resultado);
       }
     } catch {
-      // Si falla, devolver el texto tal cual
     }
     return expr;
   }
 
-  // ─── Compatibilidad: interpolarTexto (ahora sin regex) ───────────────────
-  // Llamado desde RenderizadorComponentes.renderTexto para strings normales
+  
   interpolarTexto(texto: string): string {
     return this.interpolarSinRegex(texto);
   }

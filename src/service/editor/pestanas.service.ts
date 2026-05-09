@@ -36,12 +36,6 @@ export class PestanasService {
     this.importErrors = [];
     this.lineasConErrorImport.clear();
     this.updateLineNums();
-
-    console.log('═══════════════════════════════════');
-    console.log('📂 abrirTab:', nodo.nombre);
-    console.log('📄 contenido length:', this.contenido.length);
-    console.log('📄 contenido preview:', this.contenido.substring(0, 100));
-
     this.actualizarHighlight();
 
 

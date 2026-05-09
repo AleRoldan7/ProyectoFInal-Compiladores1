@@ -11,7 +11,6 @@ export class RenderizadorComponentes {
         private componentes: Map<string, any>
     ) { }
 
-    // ─── Quitar comillas dobles de un string SIN regex ────────────────────
     private quitarComillas(valor: string): string {
         let resultado = '';
         for (let i = 0; i < valor.length; i++) {
@@ -20,17 +19,15 @@ export class RenderizadorComponentes {
         return resultado;
     }
 
-    // ─── Verificar si un char es alfanumérico o _ (para interpolación) ────
     private esAlphanumerico(c: string): boolean {
         const code = c.charCodeAt(0);
-        return (code >= 48 && code <= 57)  ||  // 0-9
-               (code >= 65 && code <= 90)  ||  // A-Z
-               (code >= 97 && code <= 122) ||  // a-z
-               code === 95;                     // _
+        return (code >= 48 && code <= 57)  ||  
+               (code >= 65 && code <= 90)  ||  
+               (code >= 97 && code <= 122) ||  
+               code === 95;                     
     }
 
-    // ─── Interpolar template literal `hola $nombre` ───────────────────────
-    // valor ya viene sin los backticks — el parser hizo slice(1,-1)
+   
     private interpolarTemplate(plantilla: string): string {
         let resultado = '';
         let i = 0;
@@ -56,12 +53,10 @@ export class RenderizadorComponentes {
         return resultado;
     }
 
-    // ─── Resolver contenido de un nodo texto a string ─────────────────────
     private resolverContenido(contenido: any): string {
         if (contenido === null || contenido === undefined) return '';
 
-        // String puro (STRING_LIT ya sin comillas por el parser):
-        // puede contener $vars → interpolar
+        
         if (typeof contenido === 'string') {
             return this.evaluador.interpolarTexto(this.quitarComillas(contenido));
         }
@@ -77,23 +72,19 @@ export class RenderizadorComponentes {
         return '';
     }
 
-    // ─── Evalúa nodo expresión del AST a string ───────────────────────────
     private evaluarExpresionATexto(nodo: any): string {
         if (nodo === null || nodo === undefined) return '';
 
-        // Variable: { tipo:'var', nombre:'x' }
         if (nodo.tipo === 'var') {
             const val = this.tabla.get(nodo.nombre);
             return (val !== null && val !== undefined) ? String(val) : '';
         }
 
-        // Identificador: { tipo:'ident', nombre:'x' }
         if (nodo.tipo === 'ident') {
             const val = this.tabla.get(nodo.nombre);
             return (val !== null && val !== undefined) ? String(val) : nodo.nombre;
         }
 
-        // Acceso a array: { tipo:'array_acc', nombre:'arr', indice: expr }
         if (nodo.tipo === 'array_acc') {
             const arr = this.tabla.get(nodo.nombre);
             const idx = this.evaluador.evaluar(nodo.indice);
@@ -104,30 +95,25 @@ export class RenderizadorComponentes {
             return '';
         }
 
-        // Template literal: `hola $nombre tienes $edad años`
-        // { tipo:'template', valor:'hola $nombre tienes $edad años' }
+        
         if (nodo.tipo === 'template') {
             return this.interpolarTemplate(nodo.valor);
         }
 
-        // Operación binaria: { op: '+', izq: ..., der: ... }
-        // El + sirve tanto para suma numérica como concatenación de strings
+        
         if (nodo.op !== undefined && nodo.izq !== undefined && nodo.der !== undefined) {
             const izqStr = this.evaluarExpresionATexto(nodo.izq);
             const derStr = this.evaluarExpresionATexto(nodo.der);
 
             if (nodo.op === '+') {
-                // Intentar suma numérica primero
                 const izqNum = Number(izqStr);
                 const derNum = Number(derStr);
                 if (!isNaN(izqNum) && !isNaN(derNum)) {
                     return String(izqNum + derNum);
                 }
-                // Si alguno no es número → concatenar como texto
                 return izqStr + derStr;
             }
 
-            // Operaciones numéricas
             const a = Number(izqStr);
             const b = Number(derStr);
             if (!isNaN(a) && !isNaN(b)) {
@@ -140,7 +126,6 @@ export class RenderizadorComponentes {
             return izqStr + ' ' + nodo.op + ' ' + derStr;
         }
 
-        // Negación unaria: { op:'neg', val: expr }
         if (nodo.op === 'neg' && nodo.val !== undefined) {
             const v = Number(this.evaluarExpresionATexto(nodo.val));
             return isNaN(v) ? '-' + this.evaluarExpresionATexto(nodo.val) : String(-v);
@@ -154,7 +139,6 @@ export class RenderizadorComponentes {
     }
 
 
-    // ─── Invocar componente ───────────────────────────────────────────────
     invocar(nodo: any): string {
         const comp = this.componentes.get(nodo.nombre);
         if (!comp) {
@@ -180,7 +164,6 @@ export class RenderizadorComponentes {
     }
 
 
-    // ─── Render lista de elementos ────────────────────────────────────────
     renderElementos(elementos: any[]): string {
         if (!Array.isArray(elementos)) return '';
         return elementos.map(e => this.renderElemento(e)).join('');
@@ -204,7 +187,6 @@ export class RenderizadorComponentes {
         }
     }
 
-    // ─── Sección ──────────────────────────────────────────────────────────
     private renderSeccion(nodo: any): string {
         const clases = this.resolverClases(nodo.estilos);
         const hijos  = this.renderElementos(nodo.hijos || []);
@@ -213,7 +195,6 @@ export class RenderizadorComponentes {
             : '<div>' + hijos + '</div>';
     }
 
-    // ─── Tabla ────────────────────────────────────────────────────────────
     private renderTabla(nodo: any): string {
         const clases = this.resolverClases(nodo.estilos);
         const filasHTML = (nodo.filas || []).map((fila: any) => {
@@ -229,32 +210,16 @@ export class RenderizadorComponentes {
                filasHTML + '</table>';
     }
 
-    // ─── Texto ────────────────────────────────────────────────────────────
-    // El spec dice que T() soporta TRES formas:
-    //
-    //  1. T("texto con $myVar directamente")
-    //       → STRING_LIT con $ adentro → interpolarSinRegex resuelve $vars
-    //
-    //  2. T(`$total + $subtotal + 0.5`)
-    //       → BACKTICK_EXPR → nodo { tipo:'template', valor:'...' }
-    //       → interpolarSinRegex resuelve $vars Y evalúa la aritmética
-    //
-    //  3. T($var + " sufijo" + 2*3)
-    //       → expresión con op:'+' → evaluarExpresionATexto concatena/opera
-    //
+
     private renderTexto(nodo: any): string {
         const clases   = this.resolverClases(nodo.estilos);
-        // resolverContenido cubre los 3 casos:
-        //  - string  → pasa a interpolarSinRegex (caso 1)
-        //  - template → interpolarTemplate (caso 2)
-        //  - op:+    → evaluarExpresionATexto (caso 3)
+       
         const textoFinal = this.resolverContenido(nodo.contenido);
         return clases
             ? '<p class="' + clases + '">' + textoFinal + '</p>'
             : '<p>' + textoFinal + '</p>';
     }
 
-    // ─── Imagen ───────────────────────────────────────────────────────────
     private renderImagen(nodo: any): string {
         const clases = this.resolverClases(nodo.estilos);
         const urls   = this.resolverUrls(nodo.urls || []);
@@ -286,7 +251,6 @@ export class RenderizadorComponentes {
         return id;
     }
 
-    // ─── Formulario ───────────────────────────────────────────────────────
     private renderForm(nodo: any): string {
         const clases = this.resolverClases(nodo.estilos);
         const inputs = (nodo.inputs || []).map((i: any) => this.renderInput(i)).join('');
@@ -336,17 +300,13 @@ export class RenderizadorComponentes {
         const funcion = nodo.props?.funcion;
 
         if (!funcion || !funcion.nombre) {
-            // Sin función — botón simple de submit
             return '<button type="submit" class="btn btn-primary' + cls + '">' + label + '</button>';
         }
 
-        // Resolver el nombre de la función:
-        // Puede ser string directo "updatePokemon"
-        // o variable en tabla de símbolos (cuando se pasa como parámetro function)
+        
         let nombreFn = String(funcion.nombre);
         const valEnTabla = this.tabla.get(nombreFn);
         if (valEnTabla !== null && valEnTabla !== undefined) {
-            // Es una variable que apunta al nombre real de la función
             if (typeof valEnTabla === 'object' && valEnTabla.nombre) {
                 nombreFn = valEnTabla.nombre;
             } else if (typeof valEnTabla === 'string') {
@@ -354,8 +314,7 @@ export class RenderizadorComponentes {
             }
         }
 
-        // Serializar los args para pasarlos al data attribute
-        // Los args son: { tipo:'input_ref', nombre:'name' } o { tipo:'var', nombre:'x' }
+        
         const argsJson = this.serializarArgs(funcion.args || []);
 
         return '<button type="button"' +
@@ -366,11 +325,8 @@ export class RenderizadorComponentes {
                '</button>';
     }
 
-    // ─── Serializar args del submit para el data attribute ────────────────
-    // Los args input_ref (@name) se guardan tal cual para que conectarEventos
-    // los resuelva contra el formulario en tiempo de clic
+    
     private serializarArgs(args: any[]): string {
-        // Construir JSON manualmente sin JSON.stringify para mayor control
         let json = '[';
         for (let i = 0; i < args.length; i++) {
             if (i > 0) json += ',';
@@ -411,7 +367,6 @@ export class RenderizadorComponentes {
     }
 
     private escaparAtributo(s: string): string {
-        // Escapar comillas dobles para HTML attribute
         let r = '';
         for (let i = 0; i < s.length; i++) {
             if (s[i] === '"') r += '&quot;';
@@ -420,7 +375,6 @@ export class RenderizadorComponentes {
         return r;
     }
 
-    // ─── For / For each ───────────────────────────────────────────────────
     private renderFor(nodo: any): string {
         let nombreArray: string;
         if (typeof nodo.array === 'string') {
@@ -459,7 +413,6 @@ export class RenderizadorComponentes {
         return html;
     }
 
-    // ─── If ───────────────────────────────────────────────────────────────
     private renderIf(nodo: any): string {
         const condicion = nodo.condicion !== undefined ? nodo.condicion : nodo.cond;
         const entonces  = nodo.entonces  !== undefined ? nodo.entonces  : nodo.then;
@@ -480,7 +433,6 @@ export class RenderizadorComponentes {
         return '';
     }
 
-    // ─── Switch ───────────────────────────────────────────────────────────
     private renderSwitch(nodo: any): string {
         const val = this.evaluador.evaluar(nodo.expr);
         for (const caso of (nodo.casos || [])) {
@@ -492,7 +444,6 @@ export class RenderizadorComponentes {
         return '';
     }
 
-    // ─── Helpers ──────────────────────────────────────────────────────────
     private resolverClases(estilos: any): string {
         if (!Array.isArray(estilos)) return '';
         return estilos.join(' ');

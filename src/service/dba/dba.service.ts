@@ -32,7 +32,7 @@ export class DbaService {
     const html = this.construirHTML(tablas);
 
     Swal.fire({
-      title: '🗄️ Base de datos SQLite',
+      title: 'Base de datos SQLite',
       html,
       width: '80vw',
       background: '#1e1e2e',
@@ -40,7 +40,7 @@ export class DbaService {
       confirmButtonText: 'Cerrar',
       confirmButtonColor: '#cba6f7',
       showDenyButton: true,
-      denyButtonText: '⬇ Descargar .db',
+      denyButtonText: 'Descargar .db',
       denyButtonColor: '#45475a'
     }).then(r => {
       if (r.isDenied) this.sqlite.descargarDB('yfera-database');
@@ -60,7 +60,7 @@ export class DbaService {
             background:#313244;color:#cba6f7;padding:6px 12px;
             border-radius:4px 4px 0 0;font-size:13px;font-weight:bold;
             display:flex;justify-content:space-between;">
-            <span>📋 ${tabla}</span>
+            <span>${tabla}</span>
             <span style="color:#6c7086;font-size:11px;">${filas.length} registro(s)</span>
           </div>
           <table style="width:100%;border-collapse:collapse;font-size:12px;background:#1e1e2e;">
@@ -72,7 +72,7 @@ export class DbaService {
                   border:1px solid #313244;text-align:left;white-space:nowrap;">
                   ${c}
                   <span style="color:#6c7086;font-size:10px;display:block;">
-                    ${col?.type || ''}${col?.pk ? ' 🔑' : ''}
+                    ${col?.type || ''}${col?.pk ? ' ' : ''}
                   </span>
                 </th>`;
       }).join('')}

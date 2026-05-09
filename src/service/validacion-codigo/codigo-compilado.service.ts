@@ -1,23 +1,23 @@
 import { Injectable } from '@angular/core';
 
-import * as parserStyle     from '../../analisisis-jison/analizador-style.js';
+import * as parserStyle from '../../analisisis-jison/analizador-style.js';
 import * as parserComponent from '../../analisisis-jison/analizador-component.js';
 import * as parserPrincipal from '../../analisisis-jison/analizador-lenguaje-principal.js';
-import * as parserDBA       from '../../analisisis-jison/analizador-dba.js';
+import * as parserDBA from '../../analisisis-jison/analizador-dba.js';
 
-import { NodoArchivo }        from '../../models/nodo-archivo.js';
-import { ErrorReporte }       from '../../pages/page-principal/page-principal/page-principal.js';
-import { RenderService }      from '../renderizado/render.service.js';
-import { SqliteService }      from '../sql/sqlite.service.js';
-import { ManejoErrores }      from '../../clases/manejo-errores/errores.js';
-import { AnalizadorSemantico} from '../../clases/manejo-errores/analizador-semantico.js';
-import { RuntimeSql }         from '../sql/runtime-sql.js';
-import Swal                   from 'sweetalert2';
-import { CodigoService }      from '../tabulacion-color/codigo.service.js';
+import { NodoArchivo } from '../../models/nodo-archivo.js';
+import { ErrorReporte } from '../../pages/page-principal/page-principal/page-principal.js';
+import { RenderService } from '../renderizado/render.service.js';
+import { SqliteService } from '../sql/sqlite.service.js';
+import { ManejoErrores } from '../../clases/manejo-errores/errores.js';
+import { AnalizadorSemantico } from '../../clases/manejo-errores/analizador-semantico.js';
+import { RuntimeSql } from '../sql/runtime-sql.js';
+import Swal from 'sweetalert2';
+import { CodigoService } from '../tabulacion-color/codigo.service.js';
 
 export interface ResultadoCompilacion {
-  exito:       boolean;
-  errores:     ErrorReporte[];
+  exito: boolean;
+  errores: ErrorReporte[];
   consolaLines: string[];
   consolaMode: 'console' | 'errors';
 }
@@ -25,34 +25,35 @@ export interface ResultadoCompilacion {
 @Injectable({ providedIn: 'root' })
 export class CodigoCompiladoService {
 
-  errores:       ErrorReporte[] = [];
-  consolaLines:  string[]       = [
+  errores: ErrorReporte[] = [];
+  erroresBD: string[] = [];
+  consolaLines: string[] = [
     '<span style="color:#45475a;">Cuando se ejecute aparece aca</span>'
   ];
   htmlCompilado: string = '';
 
   private arbolActual: NodoArchivo[] = [];
+  private astsDBAGlobales: any[] = [];
 
   constructor(
-    private render:      RenderService,
-    private sqlite:      SqliteService,
+    private render: RenderService,
+    private sqlite: SqliteService,
     private highlighter: CodigoService
-  ) {}
+  ) { }
 
   getParser(nombre: string): any {
     if (nombre.endsWith('.styles')) return parserStyle;
-    if (nombre.endsWith('.comp'))   return parserComponent;
-    if (nombre.endsWith('.dba'))    return parserDBA;
-    if (nombre.endsWith('.y'))      return parserPrincipal;
+    if (nombre.endsWith('.comp')) return parserComponent;
+    if (nombre.endsWith('.dba')) return parserDBA;
+    if (nombre.endsWith('.y')) return parserPrincipal;
     return null;
   }
 
-  // ─── Limpiar mensaje de error del parser SIN regex ───────────────────────
   private limpiarMensajeError(mensaje: string): string {
     if (!mensaje) return 'Error desconocido';
     const marca = 'Parse error on line ';
-    let inicio  = 0;
-    let idx     = 0;
+    let inicio = 0;
+    let idx = 0;
     while (idx <= mensaje.length - marca.length) {
       let ok = true;
       for (let k = 0; k < marca.length; k++) {
@@ -89,9 +90,9 @@ export class CodigoCompiladoService {
   private inicializarParser(parser: any, manejador: ManejoErrores) {
     parser.parser.yy = { manejador };
     const limpiar = (msg: string) => this.limpiarMensajeError(msg);
-    parser.parser.parseError = function(str: any, hash: any) {
-      const linea  = hash?.loc?.first_line   ?? hash?.line   ?? 0;
-      const col    = hash?.loc?.first_column ?? hash?.column ?? 0;
+    parser.parser.parseError = function (str: any, hash: any) {
+      const linea = hash?.loc?.first_line ?? hash?.line ?? 0;
+      const col = hash?.loc?.first_column ?? hash?.column ?? 0;
       const lexema = hash?.token ?? hash?.text ?? '?';
       manejador.errorSintactico(lexema, linea, col, limpiar(String(str)));
     };
@@ -109,10 +110,10 @@ export class CodigoCompiladoService {
     if (!resultado || !Array.isArray(resultado.errores)) return lista;
     for (const err of resultado.errores) {
       lista.push({
-        lexema:      err.lexema ?? '?',
-        linea:       err.linea  ?? 0,
-        columna:     err.columna ?? 0,
-        tipo:        err.tipo   ?? 'Sintáctico',
+        lexema: err.lexema ?? '?',
+        linea: err.linea ?? 0,
+        columna: err.columna ?? 0,
+        tipo: err.tipo ?? 'Sintáctico',
         descripcion: '[' + archivo + '] ' + (err.descripcion ?? 'Error desconocido'),
       });
     }
@@ -121,16 +122,16 @@ export class CodigoCompiladoService {
 
   private erroresSemanticosAReporte(manejador: ManejoErrores, archivo: string): ErrorReporte[] {
     return manejador.getErrores().map(err => ({
-      lexema:      err.lexema      ?? '?',
-      linea:       err.line        ?? 0,
-      columna:     err.column      ?? 0,
-      tipo:        err.type        ?? 'Semántico',
+      lexema: err.lexema ?? '?',
+      linea: err.line ?? 0,
+      columna: err.column ?? 0,
+      tipo: err.type ?? 'Semántico',
       descripcion: '[' + archivo + '] ' + (err.description ?? 'Error semántico'),
     }));
   }
 
   private extraerComponentes(
-    ast:     any,
+    ast: any,
     archivo: string
   ): { nombre: string; params: { tipo: string; nombre: string }[] }[] {
     const lista: any[] = [];
@@ -142,10 +143,10 @@ export class CodigoCompiladoService {
       for (const c of lista) {
         if (c.nombre === nodo.nombre) {
           this.errores.push({
-            lexema:      nodo.nombre,
-            linea:       nodo.linea   ?? 0,
-            columna:     nodo.columna ?? 0,
-            tipo:        'Semántico',
+            lexema: nodo.nombre,
+            linea: nodo.linea ?? 0,
+            columna: nodo.columna ?? 0,
+            tipo: 'Semántico',
             descripcion: 'En ' + c.archivo + ': el componente ' + nodo.nombre + ' está duplicado'
           });
           dup = true; break;
@@ -153,12 +154,12 @@ export class CodigoCompiladoService {
       }
       if (dup) continue;
       lista.push({
-        nombre:  nodo.nombre,
-        linea:   nodo.linea   ?? 0,
+        nombre: nodo.nombre,
+        linea: nodo.linea ?? 0,
         columna: nodo.columna ?? 0,
         archivo,
         params: (nodo.params ?? []).map((p: any) => ({
-          tipo:   p.tipo   ?? 'unknown',
+          tipo: p.tipo ?? 'error',
           nombre: p.nombre ?? ''
         }))
       });
@@ -167,8 +168,8 @@ export class CodigoCompiladoService {
   }
 
   resolverContenidoTexto(contenido: any): string {
-    if (typeof contenido === 'string')  return contenido;
-    if (typeof contenido === 'number')  return String(contenido);
+    if (typeof contenido === 'string') return contenido;
+    if (typeof contenido === 'number') return String(contenido);
     if (typeof contenido === 'boolean') return String(contenido);
     if (typeof contenido === 'object' && contenido !== null) {
       return this.evaluarExpresion(contenido);
@@ -178,10 +179,10 @@ export class CodigoCompiladoService {
 
   private evaluarExpresion(nodo: any): string {
     if (!nodo) return '';
-    if (nodo.tipo === 'var')       return '$' + nodo.nombre;
-    if (nodo.tipo === 'ident')     return nodo.nombre;
+    if (nodo.tipo === 'var') return '$' + nodo.nombre;
+    if (nodo.tipo === 'ident') return nodo.nombre;
     if (nodo.tipo === 'array_acc') return '$' + nodo.nombre + '[' + this.evaluarExpresion(nodo.indice) + ']';
-    if (nodo.op === 'neg')         return '-' + this.evaluarExpresion(nodo.val);
+    if (nodo.op === 'neg') return '-' + this.evaluarExpresion(nodo.val);
     if (nodo.op && nodo.izq !== undefined && nodo.der !== undefined) {
       const izq = this.evaluarExpresion(nodo.izq);
       const der = this.evaluarExpresion(nodo.der);
@@ -198,25 +199,24 @@ export class CodigoCompiladoService {
     return '';
   }
 
-  // ─── EJECUCIÓN PRINCIPAL ─────────────────────────────────────────────────
   async ejecutar(arbol: NodoArchivo[]): Promise<'console' | 'errors'> {
     this.arbolActual = arbol;
-    this.errores     = [];
-    const now        = new Date().toLocaleTimeString();
+    this.errores = [];
+    this.erroresBD = [];
+    const now = new Date().toLocaleTimeString();
 
     await this.sqlite.init();
 
-    // Validar imports
-    const archivos  = this.obtenerTodosLosArchivos(arbol);
+    const archivos = this.obtenerTodosLosArchivos(arbol);
     const archivosY = archivos.filter(a => a.nombre.endsWith('.y'));
     for (const archivoY of archivosY) {
       const erroresImport = this.highlighter.validarImports(archivoY.contenido || '', arbol);
       for (const ei of erroresImport) {
         this.errores.push({
-          lexema:      ei.ruta,
-          linea:       ei.linea,
-          columna:     1,
-          tipo:        'Semántico',
+          lexema: ei.ruta,
+          linea: ei.linea,
+          columna: 1,
+          tipo: 'Semántico',
           descripcion: '[' + archivoY.nombre + '] ' + ei.mensaje,
         });
       }
@@ -227,11 +227,10 @@ export class CodigoCompiladoService {
     }
 
     try {
-      const astsDBA:   any[] = [];
+      const astsDBA: any[] = [];
       const astsOtros: any[] = [];
       const componentesRegistrados: any[] = [];
 
-      // ── Parsear todos los archivos ──
       const recorrer = (nodos: NodoArchivo[]) => {
         for (const nodo of nodos) {
           if (nodo.tipo === 'archivo') {
@@ -242,7 +241,7 @@ export class CodigoCompiladoService {
             try {
               this.inicializarParser(parser, manejador);
               const resultado = parser.parser.parse(nodo.contenido);
-              const ast       = this.extraerAST(resultado);
+              const ast = this.extraerAST(resultado);
               this.errores.push(...this.erroresParserAReporte(resultado, nodo.nombre));
               if (nodo.nombre.endsWith('.dba')) {
                 astsDBA.push({ ast, archivo: nodo.nombre });
@@ -254,10 +253,10 @@ export class CodigoCompiladoService {
               }
             } catch (e: any) {
               this.errores.push({
-                lexema:      e.hash?.text ?? '?',
-                linea:       e.hash?.line ?? 0,
-                columna:     e.hash?.loc?.first_column ?? 0,
-                tipo:        e.hash ? 'Sintáctico' : 'Léxico',
+                lexema: e.hash?.text ?? '?',
+                linea: e.hash?.line ?? 0,
+                columna: e.hash?.loc?.first_column ?? 0,
+                tipo: e.hash ? 'Sintáctico' : 'Léxico',
                 descripcion: '[' + nodo.nombre + '] ' + e.message,
               });
             }
@@ -268,7 +267,6 @@ export class CodigoCompiladoService {
       };
       recorrer(arbol);
 
-      // ── Análisis semántico ──
       for (const { ast, archivo } of astsOtros) {
         if (!archivo.endsWith('.y') || !ast || ast.tipo !== 'programa') continue;
         const manejadorSem = new ManejoErrores();
@@ -283,7 +281,6 @@ export class CodigoCompiladoService {
 
       if (this.errores.length > 0) return 'errors';
 
-      // ── Ejecutar DBA del .dba ──
       const logDBA: string[] = [];
       for (const { ast } of astsDBA) {
         const sentencias = Array.isArray(ast) ? ast : [ast];
@@ -294,48 +291,54 @@ export class CodigoCompiladoService {
           try {
             const res = this.sqlite.ejecutarSQL(sql);
             if (s.tipo === 'select') {
-              logDBA.push('SELECT ' + s.columna + ' FROM ' + s.tabla + ' → ' + res.length + ' fila(s)');
+              logDBA.push('SELECT ' + s.columna + ' FROM ' + s.tabla + ' => ' + res.length + ' fila(s)');
             } else {
               logDBA.push(s.tipo.toUpperCase() + ' ' + s.tabla + ' OK');
             }
           } catch (e: any) {
-            logDBA.push('ERROR en ' + s.tipo + ': ' + e.message);
+            const errorMsg = 'ERROR en ' + s.tipo + ': ' + e.message;
+            logDBA.push(errorMsg);
+            this.erroresBD.push(errorMsg);
           }
         }
       }
 
-      // ── Preparar todos los ASTs para el render ──
       const todosLosAsts = [
         ...astsDBA.map((x: any) => x.ast),
         ...astsOtros.map((x: any) => x.ast),
       ];
 
-      // ── Abrir ventana de resultado ──
+      this.astsDBAGlobales = astsDBA.map((x: any) => x.ast);
+
       const ventana = window.open('', '_blank');
       if (!ventana) {
         Swal.fire({ icon: 'warning', title: 'Popup bloqueado', text: 'Permite popups para ver el resultado' });
         return 'errors';
       }
+      this.render.setPopupDocument(ventana.document);
 
-      // ── Crear RuntimeSql con callback de re-render ──
-      const runtime = new RuntimeSql(this.sqlite, () => {
-        // Este callback se llama cuando una función DBA termina
-        // Re-renderiza con los datos actualizados de la BD
-        const nuevoHtml = this.render.render(todosLosAsts);
-        if (ventana && !ventana.closed) {
-          const body = ventana.document.getElementById('yfera-body');
-          if (body) {
-            body.innerHTML = nuevoHtml;
-          } else {
-            ventana.document.body.innerHTML = nuevoHtml;
+
+      const runtime = new RuntimeSql(
+        this.sqlite,
+        () => {
+          const nuevoHtml = this.render.render(todosLosAsts);
+
+          if (ventana && !ventana.closed) {
+            const body = ventana.document.getElementById('yfera-body');
+
+            if (body) {
+              body.innerHTML = nuevoHtml;
+            } else {
+              ventana.document.body.innerHTML = nuevoHtml;
+            }
+
+            this.render.conectarEventos(ventana.document, runtime);
           }
-          // Re-conectar eventos después del re-render
-          this.render.conectarEventos(ventana.document, runtime);
-        }
-      });
+        },
+        ventana.document
+      );
 
-      // ── Registrar funciones del .y ──
-      // Las funciones vienen en ast.declaraciones con tipo === 'funcion'
+
       for (const { ast } of astsOtros) {
         if (!ast) continue;
         const declaraciones = ast.declaraciones || [];
@@ -346,24 +349,36 @@ export class CodigoCompiladoService {
         }
       }
 
-      // ── Configurar render ──
       this.render.setOnLoad((destino: string, esArchivo: boolean) => {
         return this.manejarLoad(destino, esArchivo);
       });
       this.render.setResolverContenido((c: any) => this.resolverContenidoTexto(c));
 
-      // ── Primer render ──
-      const html           = this.render.render(todosLosAsts);
-      this.htmlCompilado   = html;
+      const html = this.render.render(todosLosAsts);
+      this.htmlCompilado = html;
 
       this.consolaLines = [
         '<span style="color:#45475a;">[' + now + ']</span> Compilando...',
-        ...logDBA.map(l => '<span style="color:#94e2d5;">🗄 ' + l + '</span>'),
-        '<span style="color:#a6e3a1;">✔ Compilación exitosa.</span>',
-        '<span style="color:#89dceb;">✔ HTML generado correctamente.</span>',
+        ...logDBA.map(l => '<span style="color:#94e2d5;">' + l + '</span>'),
+        '<span style="color:#a6e3a1;">Compilación exitosa.</span>',
+        '<span style="color:#89dceb;">HTML generado correctamente.</span>',
       ];
 
-      // ── Escribir HTML en la ventana ──
+      let htmlFinal = html;
+      if (this.erroresBD.length > 0) {
+        const erroresBDhtml = this.erroresBD.map(e => `<li>${e}</li>`).join('');
+        const popupScript = `
+<script>
+  window.addEventListener('load', () => {
+    const errorDiv = document.createElement('div');
+    errorDiv.innerHTML = '<div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 9999;"><div style="background: #1e1e2e; color: #cdd6f4; padding: 20px; border-radius: 8px; border: 2px solid #f38ba8; max-width: 500px;"><h3 style="color: #f38ba8; margin-top: 0;">⚠️ Error en la Base de Datos</h3><ul style="color: #f38ba8;">${erroresBDhtml}</ul><button onclick="location.reload();" style="background: #f38ba8; color: #1e1e2e; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold;">Recargar</button></div></div>';
+    document.body.insertAdjacentHTML('beforeend', errorDiv.innerHTML);
+  });
+</script>
+        `;
+        htmlFinal = html + popupScript;
+      }
+
       ventana.document.open();
       ventana.document.write(
         '<!doctype html><html>' +
@@ -372,34 +387,38 @@ export class CodigoCompiladoService {
         '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">' +
         '</head>' +
         '<body id="yfera-body">' +
-        html +
-        '<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"><\/script>' +
+        htmlFinal +
         '</body></html>'
       );
       ventana.document.close();
 
-      // ── Conectar eventos cuando la ventana esté lista ──
-      ventana.addEventListener('load', () => {
-        console.log('[YFERA] Ventana cargada, conectando eventos...');
-        this.render.conectarEventos(ventana.document, runtime);
-      });
 
-      // Fallback: conectar también de inmediato por si 'load' ya pasó
-      setTimeout(() => {
-        if (ventana && !ventana.closed) {
-          this.render.conectarEventos(ventana.document, runtime);
-        }
-      }, 300);
+      const conectar = () => {
+        if (!ventana || ventana.closed) return;
+        console.log('[YFERA] Conectando eventos, readyState:', ventana.document.readyState);
+        this.render.conectarEventos(ventana.document, runtime);
+      };
+
+      if (ventana.document.readyState === 'complete' ||
+        ventana.document.readyState === 'interactive') {
+
+        conectar();
+      } else {
+        ventana.addEventListener('load', conectar, { once: true });
+      }
+
+
+      setTimeout(() => conectar(), 500);
 
       return 'console';
 
     } catch (error: any) {
       this.consolaLines = ['<span style="color:#f38ba8;">' + error.message + '</span>'];
       this.errores.push({
-        lexema:      error.hash?.text ?? '?',
-        linea:       error.hash?.line ?? 0,
-        columna:     error.hash?.loc?.first_column ?? 0,
-        tipo:        error.hash ? 'Sintáctico' : 'Léxico',
+        lexema: error.hash?.text ?? '?',
+        linea: error.hash?.line ?? 0,
+        columna: error.hash?.loc?.first_column ?? 0,
+        tipo: error.hash ? 'Sintáctico' : 'Léxico',
         descripcion: error.message,
       });
       Swal.fire({ icon: 'error', title: 'Error', text: error.message });
@@ -431,6 +450,7 @@ export class CodigoCompiladoService {
       const ast = this.extraerAST(resultado);
       if (archivo.nombre.endsWith('.y') && ast?.tipo === 'programa') {
         return this.render.render([ast]);
+
       }
       return '';
     } catch (e: any) {

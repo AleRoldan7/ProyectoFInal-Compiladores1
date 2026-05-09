@@ -13,9 +13,9 @@
 "function"      return 'T_FUNCTION';
 
 /* PALABRAS RESERVADAS */
-"for each"       return 'FOR_EACH';
+"for"[ \t]+"each"   return 'FOR_EACH';
+"for"               return 'FOR';
 "to"            return 'TO';
-"for"           return 'FOR';
 "if"            return 'IF';
 "else"          return 'ELSE';
 "Switch"        return 'SWITCH';
@@ -55,7 +55,7 @@
 "/"             return 'DIV';
 "%"             return 'MOD';
 
-/* DELIMITADORES TABLA - DEBEN IR ANTES que los simples */
+/* DELIMITADORES TABLA  */
 "[["            return 'TABLA_A';
 "]]"            return 'TABLA_C';
 
@@ -67,6 +67,9 @@
 "("             return 'PAREN_A';
 ")"             return 'PAREN_C';
 ".."            return 'RANGO';
+"&&"            return 'AND';
+"||"            return 'OR';
+"!"         return 'NOT';
 "<"             return 'ANGLE_A';
 ">"             return 'ANGLE_C';
 ","             return 'COMA';
@@ -75,7 +78,7 @@
 "."             return 'PUNTO';
 "="             return 'IGUAL';
 
-/* TEMPLATE LITERAL — debe ir ANTES que STRING_LIT */
+/* TEMPLATE LITERAL */
 "`"[^`]*"`"     return 'BACKTICK_EXPR';
 
 /* LITERALES */
@@ -211,8 +214,9 @@ elemento
     | texto
     | imagen
     | formulario
-    | ciclo_for_comp
+    
     | ciclo_for_each
+    | ciclo_for_complejo
     | condicional_if
     | switch_comp
 
@@ -535,8 +539,16 @@ ciclo_for_each
     ;
 
 ciclo_for_complejo
-    : FOR PAREN_A lista_pares VAR TRACK VAR PAREN_C LLAVE_A lista_elementos LLAVE_C EMPTY LLAVE_A lista_elementos LLAVE_C
-        { $$ = { tipo:'for_each_complejo', pares:$3, track:$6, cuerpo:$9, vacio:$13 }; }
+    : FOR PAREN_A lista_pares PAREN_C TRACK VAR
+      LLAVE_A lista_elementos LLAVE_C
+        { $$ = { tipo:'for_each_complejo', pares:$3,
+                 track:$6.substring(1), cuerpo:$8, vacio:null }; }
+
+    | FOR PAREN_A lista_pares PAREN_C TRACK VAR
+      LLAVE_A lista_elementos LLAVE_C
+      EMPTY LLAVE_A lista_elementos LLAVE_C
+        { $$ = { tipo:'for_each_complejo', pares:$3,
+                 track:$6.substring(1), cuerpo:$8, vacio:$12 }; }
     ;
 
 lista_pares
